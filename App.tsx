@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
-  // Lista MAESTRA de las 38 columnas EXACTAS del CSV/Sheet
+  // Lista MAESTRA de las 38 columnas EXACTAS del CSV/Sheet "inventario"
   const MASTER_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
@@ -47,18 +47,24 @@ const App: React.FC = () => {
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
 
-  // Función de normalización para encontrar la mejor coincidencia de clave en el JSON recibido
+  // Función de normalización estricta para evitar confusión con campos de catálogo
   const getNormalizedValue = (item: any, targetKey: string) => {
-    // 1. Intento directo (exacto)
-    if (item[targetKey] !== undefined) return item[targetKey];
+    // 1. Prioridad absoluta: Coincidencia exacta
+    if (item[targetKey] !== undefined && !Array.isArray(item[targetKey])) {
+      return item[targetKey];
+    }
     
-    // 2. Normalización agresiva (Sin espacios, sin acentos, sin caracteres especiales, todo lowercase)
+    // 2. Normalización selectiva (evita plurales y campos de catálogo)
     const normalize = (s: string) => s.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quitar acentos
-      .replace(/[^a-z0-9]/g, ""); // Solo alfanuméricos
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+      .replace(/[^a-z0-9]/g, ""); 
     
     const targetNorm = normalize(targetKey);
-    const foundKey = Object.keys(item).find(k => normalize(k) === targetNorm);
+    const foundKey = Object.keys(item).find(k => {
+      const kNorm = normalize(k);
+      // Evitar que "empresa" coincida con "empresas" del catálogo
+      return kNorm === targetNorm && !Array.isArray(item[k]);
+    });
     
     return foundKey ? item[foundKey] : "";
   };
@@ -77,20 +83,34 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
       
       const data = await response.json();
+      
+      // Intentar extraer el array de inventario si viene en un objeto anidado
+      let rawItems = [];
       if (Array.isArray(data)) {
-        // Mapeo línea por línea y columna por columna basado en MASTER_COLUMNS
-        const processedData = data.map((rawItem, idx) => {
-          const cleanItem: any = {};
-          MASTER_COLUMNS.forEach(col => {
-            const val = getNormalizedValue(rawItem, col);
-            // Limpieza básica de strings y manejo de nulos
-            cleanItem[col] = (val === null || val === undefined) ? "" : String(val).trim();
-          });
-          
-          // Asegurar integridad del ID
-          cleanItem.ID = Number(cleanItem.ID) || (idx + 1);
-          return cleanItem as InventoryItem;
-        });
+        rawItems = data;
+      } else if (data.inventario && Array.isArray(data.inventario)) {
+        rawItems = data.inventario;
+      } else if (data.inventory && Array.isArray(data.inventory)) {
+        rawItems = data.inventory;
+      } else if (data.data && Array.isArray(data.data)) {
+        rawItems = data.data;
+      }
+
+      if (rawItems.length > 0) {
+        const processedData = rawItems
+          .map((rawItem: any, idx: number) => {
+            const cleanItem: any = {};
+            MASTER_COLUMNS.forEach(col => {
+              const val = getNormalizedValue(rawItem, col);
+              cleanItem[col] = (val === null || val === undefined) ? "" : String(val).trim();
+            });
+            
+            // Forzar ID numérico y asegurar limpieza
+            cleanItem.ID = Number(cleanItem.ID) || (idx + 1);
+            return cleanItem as InventoryItem;
+          })
+          // FILTRO CRÍTICO: Solo mantenemos registros que tienen un CODIGO (Evita filas de catálogo)
+          .filter(item => item.CODIGO && item.CODIGO.length > 2 && item.CODIGO !== "CODIGO");
         
         setInventory(processedData);
         localStorage.setItem('zubi_inventory', JSON.stringify(processedData));
@@ -98,7 +118,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error("Sync Error:", error);
-      setSyncError("Error de Enlace");
+      setSyncError("Error de Conexión");
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
@@ -109,17 +129,12 @@ const App: React.FC = () => {
   const pushToSheets = async (action: 'upsert' | 'delete', item: InventoryItem) => {
     if (!sheetUrl) return;
     try {
-      // Enviamos el objeto con las claves maestras para que el script no se pierda
-      const payload = { ...item };
-      
       await fetch(sheetUrl, {
         method: 'POST',
         mode: 'no-cors', 
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, data: payload })
+        body: JSON.stringify({ action, data: item })
       });
-      
-      // Retraso controlado para permitir que Google procese la escritura
       setTimeout(syncWithSheets, 3500); 
     } catch (error) {
       console.error("Push Error:", error);
@@ -205,7 +220,7 @@ const App: React.FC = () => {
               </div>
               {isSidebarOpen && (
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[9px] font-black uppercase tracking-wider truncate">{isSyncing ? 'Sincronizando...' : syncError ? 'Fallo Cloud' : 'En Linea'}</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider truncate">{isSyncing ? 'Sincronizando...' : syncError ? 'Fallo Cloud' : 'Sincronizado'}</span>
                   {lastSync && !syncError && <span className="text-[8px] text-slate-500 font-bold">{lastSync}</span>}
                 </div>
               )}
@@ -221,10 +236,10 @@ const App: React.FC = () => {
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"><Menu size={20}/></button>
             <h2 className="font-black text-slate-900 text-lg tracking-tight uppercase leading-none">
               {view === 'dashboard' && 'Control Operativo'}
-              {view === 'inventory' && 'Inventario Maestro (38 Columnas Sincronizadas)'}
-              {view === 'add' && (editingItem ? `Editando Activo #${editingItem.ID}` : 'Nuevo Activo en Nube')}
-              {view === 'reports' && 'Auditoría de Patrimonio'}
-              {view === 'settings' && 'Gestión de Sistema'}
+              {view === 'inventory' && 'Inventario Maestro (Filtro de Integridad Activo)'}
+              {view === 'add' && (editingItem ? `Editando Activo #${editingItem.ID}` : 'Nuevo Activo')}
+              {view === 'reports' && 'Auditoría Visual'}
+              {view === 'settings' && 'Configuración de Sistema'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -235,11 +250,11 @@ const App: React.FC = () => {
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}
               >
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> 
-                Actualizar Datos
+                Refrescar Datos
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl uppercase tracking-widest">
-              <Bot size={18} /> IA Auditor
+              <Bot size={18} /> Consultor IA
             </button>
           </div>
         </header>
