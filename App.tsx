@@ -63,41 +63,49 @@ const App: React.FC = () => {
     setSyncError(null);
     try {
       const response = await fetch(urlToUse, { method: 'GET', redirect: 'follow' });
-      if (!response.ok) throw new Error(`Status: ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
       
       const data = await response.json();
+      console.log("Payload recibido:", data);
+
+      // 1. EXTRAER INVENTARIO (Prioridad absoluta a la clave 'inventario')
+      let rawInvData = data.inventario || data.inventory || (Array.isArray(data) ? data : null);
       
-      // Intentar encontrar el array de datos en cualquier propiedad común
-      let rawData = Array.isArray(data) ? data : (data.inventario || data.inventory || data.data || data.rows || []);
-      
-      if (rawData.length > 0) {
-        const processedInv = rawData.map((row: any, idx: number) => {
+      if (rawInvData && Array.isArray(rawInvData)) {
+        const processedInv = rawInvData.map((row: any, idx: number) => {
           const item: any = {};
           
           if (Array.isArray(row)) {
+            // Si la fila tiene menos de 20 columnas, probablemente sea basura o del catálogo, la ignoramos
+            if (row.length < 20) return null;
+            
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
               item[col] = (val === null || val === undefined) ? "" : String(val).trim();
             });
-          } else {
+          } else if (typeof row === 'object') {
+            // Si el objeto tiene muy pocas llaves, no es un registro de inventario
+            if (Object.keys(row).length < 10) return null;
+
             MASTER_COLUMNS.forEach(col => {
               const targetNorm = normalizeKey(col);
               const foundKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
               const val = foundKey ? row[foundKey] : row[col];
               item[col] = (val === null || val === undefined) ? "" : String(val).trim();
             });
+          } else {
+            return null;
           }
           
-          // Forzar integridad de ID
           const parsedId = parseInt(String(item.ID));
           item.ID = isNaN(parsedId) ? (idx + 1) : parsedId;
           return item as InventoryItem;
-        }).filter(item => {
-          // Filtro mínimo: debe tener un código o un ID válido y no ser la cabecera
-          const isNotHeader = String(item.CODIGO).toLowerCase() !== "codigo";
-          const hasIdent = (item.CODIGO && item.CODIGO.trim() !== "") || !isNaN(item.ID);
-          return isNotHeader && hasIdent;
-        });
+        }).filter(item => 
+          item !== null && 
+          item.CODIGO && 
+          item.CODIGO.toLowerCase() !== "codigo" &&
+          item.CODIGO.trim() !== ""
+        );
 
         if (processedInv.length > 0) {
           setInventory(processedInv);
@@ -105,17 +113,17 @@ const App: React.FC = () => {
         }
       }
 
-      // Sincronizar Catálogo con nombres normalizados
-      const rawCat = data.catalogo || data.catalog || data.categories;
+      // 2. EXTRAER CATÁLOGO (Clave 'catalogo')
+      const rawCat = data.catalogo || data.catalog;
       if (rawCat && typeof rawCat === 'object' && !Array.isArray(rawCat)) {
         const newCatalog: Catalog = { ...catalog };
         let updated = false;
         Object.keys(newCatalog).forEach(key => {
           const sheetKey = Object.keys(rawCat).find(k => normalizeKey(k) === normalizeKey(key));
           const list = rawCat[sheetKey || key];
-          if (Array.isArray(list) && list.length > 0) {
+          if (Array.isArray(list)) {
             newCatalog[key as keyof Catalog] = list
-              .filter((v: any) => v && String(v).trim() !== "")
+              .filter((v: any) => v && String(v).trim() !== "" && String(v).toLowerCase() !== normalizeKey(key))
               .map(v => String(v).trim());
             updated = true;
           }
@@ -128,8 +136,8 @@ const App: React.FC = () => {
 
       setLastSync(new Date().toLocaleTimeString());
     } catch (error) {
-      console.error("Sync Error:", error);
-      setSyncError("Error de Conexión");
+      console.error("Sync Failure:", error);
+      setSyncError("Error de sincronización");
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
@@ -146,15 +154,15 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
-      setTimeout(() => syncWithSheets(), 2500); 
+      setTimeout(() => syncWithSheets(), 3000); 
     } catch (error) {
-      setSyncError("Error de envío");
+      setSyncError("Error de guardado");
     }
   };
 
   useEffect(() => {
     syncWithSheets();
-  }, [sheetUrl, syncWithSheets]);
+  }, [sheetUrl]);
 
   const stats = useMemo(() => ({
     total: inventory.length,
@@ -183,7 +191,7 @@ const App: React.FC = () => {
 
   const handleDeleteItem = async (id: number) => {
     const itemToDelete = inventory.find(i => i.ID === id);
-    if (itemToDelete && window.confirm(`¿Confirmas la eliminación de ${itemToDelete.CODIGO}?`)) {
+    if (itemToDelete && window.confirm(`¿Confirmas eliminar ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
       if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
@@ -211,13 +219,13 @@ const App: React.FC = () => {
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0 z-20 shadow-sm">
           <div className="flex items-center gap-6">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"><Menu size={20}/></button>
-            <div>
-               <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">
+            <div className="flex flex-col">
+              <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">
                 {view === 'dashboard' && 'Control Operativo'}
                 {view === 'inventory' && 'Inventario Maestro'}
                 {view === 'add' && (editingItem ? `Editando #${editingItem.CODIGO}` : 'Nuevo Registro')}
                 {view === 'reports' && 'Auditoría Visual'}
-                {view === 'settings' && 'Gestión y Configuración'}
+                {view === 'settings' && 'Gestión Cloud'}
               </h2>
               {lastSync && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sinc: {lastSync}</span>}
             </div>
@@ -225,7 +233,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             {sheetUrl && (
               <button onClick={() => syncWithSheets()} disabled={isSyncing} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}>
-                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Sincronizando...' : 'Refrescar'}
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Procesando...' : 'Refrescar'}
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl uppercase tracking-widest">
