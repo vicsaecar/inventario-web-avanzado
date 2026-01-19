@@ -9,7 +9,6 @@ import {
   Menu, 
   Package,
   Bot,
-  Cloud,
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
@@ -46,13 +45,11 @@ const App: React.FC = () => {
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
 
-  const getNormalizedValue = (item: any, targetKey: string) => {
-    if (item[targetKey] !== undefined && !Array.isArray(item[targetKey])) return item[targetKey];
-    const normalize = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ""); 
-    const targetNorm = normalize(targetKey);
-    const foundKey = Object.keys(item).find(k => normalize(k) === targetNorm && !Array.isArray(item[k]));
-    return foundKey ? item[foundKey] : "";
-  };
+  const normalizeKey = (s: string) => 
+    String(s).toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
 
   const syncWithSheets = useCallback(async () => {
     if (!sheetUrl) {
@@ -65,39 +62,62 @@ const App: React.FC = () => {
     setSyncError(null);
     try {
       const response = await fetch(sheetUrl, { method: 'GET', redirect: 'follow' });
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
       
       const data = await response.json();
+      console.log("Datos recibidos de Cloud:", data);
+
+      // Detectar estructura de inventario
+      let rawData = Array.isArray(data) ? data : (data.inventario || data.inventory || data.data || []);
       
-      // 1. Sincronización de Inventario
-      let rawInventory = Array.isArray(data) ? data : (data.inventario || data.inventory || data.data || []);
-      if (rawInventory.length > 0) {
-        const processedInv = rawInventory
-          .map((raw: any, idx: number) => {
-            const clean: any = {};
-            MASTER_COLUMNS.forEach(col => {
-              const val = getNormalizedValue(raw, col);
-              clean[col] = (val === null || val === undefined) ? "" : String(val).trim();
+      if (rawData.length > 0) {
+        const processedInv = rawData.map((row: any, idx: number) => {
+          const item: any = {};
+          
+          if (Array.isArray(row)) {
+            // Caso 1: El script devuelve una matriz de valores (filas de Sheets)
+            MASTER_COLUMNS.forEach((col, colIdx) => {
+              const val = row[colIdx];
+              item[col] = (val === null || val === undefined) ? "" : String(val).trim();
             });
-            clean.ID = Number(clean.ID) || (idx + 1);
-            return clean as InventoryItem;
-          })
-          .filter(item => item.CODIGO && item.CODIGO !== "CODIGO");
-        
+          } else {
+            // Caso 2: El script devuelve objetos JSON
+            MASTER_COLUMNS.forEach(col => {
+              const targetNorm = normalizeKey(col);
+              const foundKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
+              const val = foundKey ? row[foundKey] : row[col];
+              item[col] = (val === null || val === undefined) ? "" : String(val).trim();
+            });
+          }
+          
+          // Asegurar ID numérico
+          item.ID = parseInt(String(item.ID)) || (idx + 1);
+          return item as InventoryItem;
+        }).filter(item => 
+          item.CODIGO && 
+          item.CODIGO.toLowerCase() !== "codigo" && 
+          item.CODIGO.trim() !== ""
+        );
+
         if (processedInv.length > 0) {
           setInventory(processedInv);
           localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
+          console.log(`Sincronizados ${processedInv.length} registros.`);
         }
       }
 
-      // 2. Sincronización de Catálogo
-      const rawCat = data.catalogo || data.catalog || data;
+      // Sincronizar Catálogo
+      const rawCat = data.catalogo || data.catalog;
       if (rawCat && typeof rawCat === 'object' && !Array.isArray(rawCat)) {
         const newCatalog: Catalog = { ...catalog };
         let updated = false;
         Object.keys(newCatalog).forEach(key => {
-          if (Array.isArray(rawCat[key]) && rawCat[key].length > 0) {
-            newCatalog[key as keyof Catalog] = rawCat[key].filter((v: any) => v && String(v).trim() !== "");
+          const sheetKey = Object.keys(rawCat).find(k => normalizeKey(k) === normalizeKey(key));
+          const list = rawCat[sheetKey || key];
+          if (Array.isArray(list) && list.length > 0) {
+            newCatalog[key as keyof Catalog] = list
+              .filter((v: any) => v && String(v).trim() !== "")
+              .map(v => String(v).trim());
             updated = true;
           }
         });
@@ -109,14 +129,14 @@ const App: React.FC = () => {
 
       setLastSync(new Date().toLocaleTimeString());
     } catch (error) {
-      console.error("Sync Error:", error);
+      console.error("Error crítico de sincronización:", error);
       setSyncError("Error de Enlace");
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
       setIsSyncing(false);
     }
-  }, [sheetUrl]);
+  }, [sheetUrl, catalog]);
 
   const pushToSheets = async (action: 'upsert' | 'delete' | 'update_catalog', data: any) => {
     if (!sheetUrl) return;
@@ -127,25 +147,23 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
-      setTimeout(syncWithSheets, 3500); 
+      // Espera breve para dar tiempo al script de Google a procesar
+      setTimeout(syncWithSheets, 2000); 
     } catch (error) {
-      console.error("Push Error:", error);
+      console.error("Error al enviar datos:", error);
       setSyncError("Push Fallido");
     }
   };
 
   useEffect(() => {
     syncWithSheets();
-  }, [sheetUrl, syncWithSheets]);
+  }, [sheetUrl]);
 
   const stats = useMemo(() => ({
     total: inventory.length,
-    laptops: inventory.filter(i => String(i.TIPO || '').toLowerCase().includes('portatil')).length,
-    phones: inventory.filter(i => {
-      const t = String(i.TIPO || '').toLowerCase();
-      return t.includes('mv_') || t.includes('móvil');
-    }).length,
-    active: inventory.filter(i => ['alta', 'prestado', 'reserva', 'vigente'].includes(String(i.ESTADO || '').toLowerCase())).length,
+    laptops: inventory.filter(i => String(i.TIPO || '').toLowerCase().includes('pt_')).length,
+    phones: inventory.filter(i => String(i.TIPO || '').toLowerCase().includes('mv_')).length,
+    active: inventory.filter(i => ['alta', 'prestado', 'reserva', 'vigente', 'propiedad'].includes(String(i.ESTADO || '').toLowerCase())).length,
     value: inventory.reduce((acc, item) => {
       const val = parseFloat(String(item.COSTE || '').replace(/[^\d.-]/g, '').replace(',', '.') || '0');
       return acc + (isNaN(val) ? 0 : val);
@@ -162,14 +180,16 @@ const App: React.FC = () => {
       updatedItem = { ...newItem, ID: nextId };
       setInventory(prev => [...prev, updatedItem]);
     }
+    localStorage.setItem('zubi_inventory', JSON.stringify(inventory));
     if (sheetUrl) await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
 
   const handleDeleteItem = async (id: number) => {
     const itemToDelete = inventory.find(i => i.ID === id);
-    if (itemToDelete && window.confirm(`¿Seguro que deseas eliminar el registro #${id}?`)) {
+    if (itemToDelete && window.confirm(`¿Confirmas la eliminación definitiva del registro ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
+      localStorage.setItem('zubi_inventory', JSON.stringify(inventory.filter(item => item.ID !== id)));
       if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
   };
@@ -190,7 +210,7 @@ const App: React.FC = () => {
         <nav className="flex-1 py-8 overflow-y-auto px-4 space-y-2 custom-scrollbar">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Inventario" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
-          <NavItem icon={<PlusCircle size={20} />} label="Alta Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
+          <NavItem icon={<PlusCircle size={20} />} label="Nuevo Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
           <NavItem icon={<BarChart3 size={20} />} label="Auditoría" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
         <div className="p-6 border-t border-white/10 space-y-2 bg-slate-950/20">
@@ -202,18 +222,26 @@ const App: React.FC = () => {
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0 z-20 shadow-sm">
           <div className="flex items-center gap-6">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"><Menu size={20}/></button>
-            <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight">
-              {view === 'dashboard' && 'Control Operativo'}
-              {view === 'inventory' && 'Inventario Maestro'}
-              {view === 'add' && (editingItem ? `Editando #${editingItem.ID}` : 'Nuevo Registro')}
-              {view === 'reports' && 'Auditoría Visual'}
-              {view === 'settings' && 'Gestión de Sistema y Catálogos'}
-            </h2>
+            <div className="flex flex-col">
+              <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">
+                {view === 'dashboard' && 'Control Operativo'}
+                {view === 'inventory' && 'Inventario Maestro'}
+                {view === 'add' && (editingItem ? `Editando #${editingItem.CODIGO}` : 'Nuevo Registro')}
+                {view === 'reports' && 'Auditoría Visual'}
+                {view === 'settings' && 'Gestión de Sistema'}
+              </h2>
+              {lastSync && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sincronizado: {lastSync}</span>}
+            </div>
           </div>
           <div className="flex items-center gap-4">
+            {syncError && (
+              <div className="flex items-center gap-2 text-rose-600 bg-rose-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
+                <AlertCircle size={14} /> {syncError}
+              </div>
+            )}
             {sheetUrl && (
               <button onClick={syncWithSheets} disabled={isSyncing} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}>
-                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Sincronizando...' : 'Refrescar Datos'}
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Actualizando...' : 'Refrescar'}
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl uppercase tracking-widest">
