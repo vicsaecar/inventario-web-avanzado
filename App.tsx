@@ -51,8 +51,9 @@ const App: React.FC = () => {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]/g, "");
 
-  const syncWithSheets = useCallback(async () => {
-    if (!sheetUrl) {
+  const syncWithSheets = useCallback(async (forcedUrl?: string) => {
+    const urlToUse = forcedUrl || sheetUrl;
+    if (!urlToUse) {
       const savedInv = localStorage.getItem('zubi_inventory');
       if (savedInv) setInventory(JSON.parse(savedInv));
       return;
@@ -61,27 +62,24 @@ const App: React.FC = () => {
     setIsSyncing(true);
     setSyncError(null);
     try {
-      const response = await fetch(sheetUrl, { method: 'GET', redirect: 'follow' });
+      const response = await fetch(urlToUse, { method: 'GET', redirect: 'follow' });
       if (!response.ok) throw new Error(`Status: ${response.status}`);
       
       const data = await response.json();
-      console.log("Datos recibidos de Cloud:", data);
-
-      // Detectar estructura de inventario
-      let rawData = Array.isArray(data) ? data : (data.inventario || data.inventory || data.data || []);
+      
+      // Intentar encontrar el array de datos en cualquier propiedad común
+      let rawData = Array.isArray(data) ? data : (data.inventario || data.inventory || data.data || data.rows || []);
       
       if (rawData.length > 0) {
         const processedInv = rawData.map((row: any, idx: number) => {
           const item: any = {};
           
           if (Array.isArray(row)) {
-            // Caso 1: El script devuelve una matriz de valores (filas de Sheets)
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
               item[col] = (val === null || val === undefined) ? "" : String(val).trim();
             });
           } else {
-            // Caso 2: El script devuelve objetos JSON
             MASTER_COLUMNS.forEach(col => {
               const targetNorm = normalizeKey(col);
               const foundKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
@@ -90,24 +88,25 @@ const App: React.FC = () => {
             });
           }
           
-          // Asegurar ID numérico
-          item.ID = parseInt(String(item.ID)) || (idx + 1);
+          // Forzar integridad de ID
+          const parsedId = parseInt(String(item.ID));
+          item.ID = isNaN(parsedId) ? (idx + 1) : parsedId;
           return item as InventoryItem;
-        }).filter(item => 
-          item.CODIGO && 
-          item.CODIGO.toLowerCase() !== "codigo" && 
-          item.CODIGO.trim() !== ""
-        );
+        }).filter(item => {
+          // Filtro mínimo: debe tener un código o un ID válido y no ser la cabecera
+          const isNotHeader = String(item.CODIGO).toLowerCase() !== "codigo";
+          const hasIdent = (item.CODIGO && item.CODIGO.trim() !== "") || !isNaN(item.ID);
+          return isNotHeader && hasIdent;
+        });
 
         if (processedInv.length > 0) {
           setInventory(processedInv);
           localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
-          console.log(`Sincronizados ${processedInv.length} registros.`);
         }
       }
 
-      // Sincronizar Catálogo
-      const rawCat = data.catalogo || data.catalog;
+      // Sincronizar Catálogo con nombres normalizados
+      const rawCat = data.catalogo || data.catalog || data.categories;
       if (rawCat && typeof rawCat === 'object' && !Array.isArray(rawCat)) {
         const newCatalog: Catalog = { ...catalog };
         let updated = false;
@@ -129,8 +128,8 @@ const App: React.FC = () => {
 
       setLastSync(new Date().toLocaleTimeString());
     } catch (error) {
-      console.error("Error crítico de sincronización:", error);
-      setSyncError("Error de Enlace");
+      console.error("Sync Error:", error);
+      setSyncError("Error de Conexión");
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
@@ -147,17 +146,15 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
-      // Espera breve para dar tiempo al script de Google a procesar
-      setTimeout(syncWithSheets, 2000); 
+      setTimeout(() => syncWithSheets(), 2500); 
     } catch (error) {
-      console.error("Error al enviar datos:", error);
-      setSyncError("Push Fallido");
+      setSyncError("Error de envío");
     }
   };
 
   useEffect(() => {
     syncWithSheets();
-  }, [sheetUrl]);
+  }, [sheetUrl, syncWithSheets]);
 
   const stats = useMemo(() => ({
     total: inventory.length,
@@ -180,24 +177,16 @@ const App: React.FC = () => {
       updatedItem = { ...newItem, ID: nextId };
       setInventory(prev => [...prev, updatedItem]);
     }
-    localStorage.setItem('zubi_inventory', JSON.stringify(inventory));
     if (sheetUrl) await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
 
   const handleDeleteItem = async (id: number) => {
     const itemToDelete = inventory.find(i => i.ID === id);
-    if (itemToDelete && window.confirm(`¿Confirmas la eliminación definitiva del registro ${itemToDelete.CODIGO}?`)) {
+    if (itemToDelete && window.confirm(`¿Confirmas la eliminación de ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
-      localStorage.setItem('zubi_inventory', JSON.stringify(inventory.filter(item => item.ID !== id)));
       if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
-  };
-
-  const handleUpdateCatalog = async (newCatalog: Catalog) => {
-    setCatalog(newCatalog);
-    localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
-    if (sheetUrl) await pushToSheets('update_catalog', newCatalog);
   };
 
   return (
@@ -210,7 +199,7 @@ const App: React.FC = () => {
         <nav className="flex-1 py-8 overflow-y-auto px-4 space-y-2 custom-scrollbar">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Inventario" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
-          <NavItem icon={<PlusCircle size={20} />} label="Nuevo Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
+          <NavItem icon={<PlusCircle size={20} />} label="Alta Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
           <NavItem icon={<BarChart3 size={20} />} label="Auditoría" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
         <div className="p-6 border-t border-white/10 space-y-2 bg-slate-950/20">
@@ -222,26 +211,21 @@ const App: React.FC = () => {
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0 z-20 shadow-sm">
           <div className="flex items-center gap-6">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"><Menu size={20}/></button>
-            <div className="flex flex-col">
-              <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">
+            <div>
+               <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight leading-none">
                 {view === 'dashboard' && 'Control Operativo'}
                 {view === 'inventory' && 'Inventario Maestro'}
                 {view === 'add' && (editingItem ? `Editando #${editingItem.CODIGO}` : 'Nuevo Registro')}
                 {view === 'reports' && 'Auditoría Visual'}
-                {view === 'settings' && 'Gestión de Sistema'}
+                {view === 'settings' && 'Gestión y Configuración'}
               </h2>
-              {lastSync && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sincronizado: {lastSync}</span>}
+              {lastSync && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sinc: {lastSync}</span>}
             </div>
           </div>
           <div className="flex items-center gap-4">
-            {syncError && (
-              <div className="flex items-center gap-2 text-rose-600 bg-rose-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase">
-                <AlertCircle size={14} /> {syncError}
-              </div>
-            )}
             {sheetUrl && (
-              <button onClick={syncWithSheets} disabled={isSyncing} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}>
-                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Actualizando...' : 'Refrescar'}
+              <button onClick={() => syncWithSheets()} disabled={isSyncing} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}>
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Sincronizando...' : 'Refrescar'}
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl uppercase tracking-widest">
@@ -254,7 +238,7 @@ const App: React.FC = () => {
            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={(i) => { setEditingItem(i); setView('add'); }} onDelete={handleDeleteItem} /> :
            view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} /> :
            view === 'reports' ? <Reports inventory={inventory} /> :
-           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} onCatalogUpdate={handleUpdateCatalog} /> : null}
+           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} /> : null}
         </div>
       </main>
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />
