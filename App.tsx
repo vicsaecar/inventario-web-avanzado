@@ -37,7 +37,7 @@ const App: React.FC = () => {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
-  // Sincronización robusta: Prioriza datos remotos y valida tipos
+  // Sincronización robusta: Prioriza datos remotos y valida claves exactas
   const syncWithSheets = useCallback(async () => {
     if (!sheetUrl) {
       const saved = localStorage.getItem('zubi_inventory');
@@ -53,22 +53,26 @@ const App: React.FC = () => {
       
       const data = await response.json();
       if (Array.isArray(data)) {
-        // Asegurar que el ID sea numérico para evitar desorden
-        const processedData = data.map(item => ({
+        // Normalizar los datos recibidos del Sheet para que coincidan con la interfaz
+        const processedData = data.map((item, idx) => ({
           ...item,
-          ID: Number(item.ID) || 0
+          ID: Number(item.ID) || (idx + 1),
+          // Aseguramos que campos con caracteres especiales se lean bien
+          Nº_TELEFONO: item.Nº_TELEFONO || item['Nº_TELEFONO'] || '',
+          IMEI_1: item.IMEI_1 || item['IMEI_1'] || '',
+          IMEI_2: item.IMEI_2 || item['IMEI_2'] || '',
+          CREADO_POR: item.CREADO_POR || item['CREADO_POR'] || item.CREADO || ''
         }));
         
         setInventory(processedData);
         localStorage.setItem('zubi_inventory', JSON.stringify(processedData));
         setLastSync(new Date().toLocaleTimeString());
       } else {
-        throw new Error("Invalid Data Format");
+        throw new Error("Invalid Format");
       }
     } catch (error) {
       console.error("Sync Error:", error);
-      setSyncError("Fallo de conexión Cloud");
-      // Cargar cache si falla internet
+      setSyncError("Cloud Link Failed");
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
@@ -85,11 +89,10 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data: item })
       });
-      // Delay de seguridad para propagación de cambios en Google Servers
       setTimeout(syncWithSheets, 2500); 
     } catch (error) {
       console.error("Push Error:", error);
-      setSyncError("Error al enviar datos");
+      setSyncError("Push Failed");
     }
   };
 
@@ -105,9 +108,9 @@ const App: React.FC = () => {
   const stats = useMemo(() => {
     return {
       total: inventory.length,
-      laptops: inventory.filter(i => i.TIPO?.toLowerCase().includes('portatil')).length,
-      phones: inventory.filter(i => i.TIPO?.toLowerCase().includes('móvil') || i.TIPO?.toLowerCase().includes('sim')).length,
-      active: inventory.filter(i => ['alta', 'prestado', 'reserva'].includes(i.ESTADO?.toLowerCase())).length,
+      laptops: inventory.filter(i => i.TIPO?.toLowerCase().includes('pt_portatil') || i.TIPO?.toLowerCase().includes('portatil')).length,
+      phones: inventory.filter(i => i.TIPO?.toLowerCase().includes('mv_') || i.TIPO?.toLowerCase().includes('móvil')).length,
+      active: inventory.filter(i => ['alta', 'prestado', 'reserva', 'vigente'].includes(i.ESTADO?.toLowerCase())).length,
       value: inventory.reduce((acc, item) => {
         const valStr = item.COSTE?.toString().replace(/[^\d.-]/g, '').replace(',', '.') || '0';
         const val = parseFloat(valStr);
@@ -132,7 +135,7 @@ const App: React.FC = () => {
 
   const handleDeleteItem = async (id: number) => {
     const itemToDelete = inventory.find(i => i.ID === id);
-    if (itemToDelete && window.confirm(`¿Seguro que deseas eliminar permanentemente el activo #${id} del Cloud?`)) {
+    if (itemToDelete && window.confirm(`¿Seguro que deseas eliminar el registro #${id} de la nube?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
       if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
@@ -156,8 +159,8 @@ const App: React.FC = () => {
         <nav className="flex-1 py-10 overflow-y-auto px-4 space-y-2 custom-scrollbar">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Activos" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
-          <NavItem icon={<PlusCircle size={20} />} label="Nuevo Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
-          <NavItem icon={<BarChart3 size={20} />} label="Informes" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
+          <NavItem icon={<PlusCircle size={20} />} label="Añadir Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
+          <NavItem icon={<BarChart3 size={20} />} label="Análisis" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
 
         <div className="p-6 border-t border-white/5 space-y-2">
@@ -169,7 +172,7 @@ const App: React.FC = () => {
               </div>
               {isSidebarOpen && (
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[9px] font-black uppercase truncate">{isSyncing ? 'Sincronizando...' : syncError ? 'Error Cloud' : 'Cloud Online'}</span>
+                  <span className="text-[9px] font-black uppercase truncate">{isSyncing ? 'Syncing...' : syncError ? 'Error Cloud' : 'Google Online'}</span>
                   {lastSync && !syncError && <span className="text-[8px] text-slate-500 font-bold">{lastSync}</span>}
                 </div>
               )}
@@ -184,11 +187,11 @@ const App: React.FC = () => {
           <div className="flex items-center gap-6">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-all"><Menu size={20}/></button>
             <h2 className="font-black text-slate-900 text-xl tracking-tight uppercase leading-none">
-              {view === 'dashboard' && 'Dashboard Principal'}
-              {view === 'inventory' && 'Inventario de Activos'}
-              {view === 'add' && (editingItem ? `Editando Activo #${editingItem.ID}` : 'Nuevo Registro Maestro')}
-              {view === 'reports' && 'Análisis de Capital'}
-              {view === 'settings' && 'Configuración de Sistema'}
+              {view === 'dashboard' && 'Control Operativo'}
+              {view === 'inventory' && 'Inventario Maestro'}
+              {view === 'add' && (editingItem ? `Editando #${editingItem.ID}` : 'Nuevo Registro')}
+              {view === 'reports' && 'Informes de Valor'}
+              {view === 'settings' && 'Ajustes Catálogo'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -196,10 +199,10 @@ const App: React.FC = () => {
               <button 
                 onClick={syncWithSheets} 
                 disabled={isSyncing} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'border-slate-100 text-slate-300' : 'border-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600 shadow-sm'}`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border-2 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'border-slate-100 text-slate-300' : 'border-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'}`}
               >
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> 
-                {isSyncing ? 'Actualizando' : 'Sincronizar'}
+                Refrescar
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl shadow-slate-200 uppercase tracking-widest">
