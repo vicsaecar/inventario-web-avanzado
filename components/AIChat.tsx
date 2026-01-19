@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Bot, User, Loader2, Sparkles, Database, PieChart } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI } from "@google/genai";
 import { InventoryItem } from '../types';
 
 interface AIChatProps {
@@ -38,6 +38,7 @@ const AIChat: React.FC<AIChatProps> = ({ isOpen, onClose, inventory }) => {
     setIsLoading(true);
 
     try {
+      // Create a new instance right before making an API call
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       // Contexto enriquecido para razonamiento complejo
       const context = JSON.stringify(inventory.map(i => ({ 
@@ -49,6 +50,7 @@ const AIChat: React.FC<AIChatProps> = ({ isOpen, onClose, inventory }) => {
         contents: `Sistema Zubi Inv. Datos: ${context}. Usuario: ${textToSend}. Responde como un Director de IT. Realiza cálculos si es necesario (sumas de costes, conteos de estados). Máximo 200 palabras.`,
       });
 
+      // Using the property .text directly as per guidelines
       setMessages(prev => [...prev, { role: 'ai', text: response.text || 'Sin respuesta.' }]);
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', text: 'Error en el núcleo de razonamiento. Intente simplificar la consulta.' }]);
