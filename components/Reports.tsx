@@ -16,7 +16,10 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
 
   const typeData = useMemo(() => {
     const counts: Record<string, number> = {};
-    inventory.forEach(item => { counts[item.tipo] = (counts[item.tipo] || 0) + 1; });
+    inventory.forEach(item => { 
+      // Fix: Property 'tipo' changed to 'TIPO'
+      counts[item.TIPO] = (counts[item.TIPO] || 0) + 1; 
+    });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a,b) => b.value - a.value);
@@ -25,8 +28,10 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
   const costByCompany = useMemo(() => {
     const costs: Record<string, number> = {};
     inventory.forEach(item => {
-      const val = parseFloat(item.coste?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
-      if (!isNaN(val)) costs[item.empresa] = (costs[item.empresa] || 0) + val;
+      // Fix: Property 'coste' changed to 'COSTE'
+      const val = parseFloat(item.COSTE?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
+      // Fix: Property 'empresa' changed to 'EMPRESA'
+      if (!isNaN(val)) costs[item.EMPRESA] = (costs[item.EMPRESA] || 0) + val;
     });
     return Object.entries(costs)
       .map(([name, value]) => ({ name, value }))
@@ -36,8 +41,10 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
   const valueByStatus = useMemo(() => {
     const statusCosts: Record<string, number> = {};
     inventory.forEach(item => {
-      const val = parseFloat(item.coste?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
-      if (!isNaN(val)) statusCosts[item.estado] = (statusCosts[item.estado] || 0) + val;
+      // Fix: Property 'coste' changed to 'COSTE'
+      const val = parseFloat(item.COSTE?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
+      // Fix: Property 'estado' changed to 'ESTADO'
+      if (!isNaN(val)) statusCosts[item.ESTADO] = (statusCosts[item.ESTADO] || 0) + val;
     });
     return Object.entries(statusCosts)
       .map(([name, value]) => ({ name, value }))
@@ -50,7 +57,8 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
     return inventory
       .map(item => ({
         ...item,
-        numericCost: parseFloat(item.coste?.replace(/[^\d.-]/g, '').replace(',', '.') || '0')
+        // Fix: Property 'coste' changed to 'COSTE'
+        numericCost: parseFloat(item.COSTE?.replace(/[^\d.-]/g, '').replace(',', '.') || '0')
       }))
       .sort((a, b) => b.numericCost - a.numericCost)
       .slice(0, 5);
@@ -115,7 +123,8 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Activos Inactivos</p>
             <div className="flex items-center gap-3">
                <h3 className="text-3xl font-black text-slate-900">
-                 {inventory.filter(i => ['baja', 'extraviado', 'bloqueo'].includes(i.estado.toLowerCase())).length}
+                 {/* Fix: Property 'estado' changed to 'ESTADO' */}
+                 {inventory.filter(i => ['baja', 'extraviado', 'bloqueo'].includes(i.ESTADO.toLowerCase())).length}
                </h3>
                <div className="bg-orange-100 text-orange-600 p-1 rounded-md">
                   <AlertTriangle size={18} />
@@ -218,19 +227,24 @@ const Reports: React.FC<ReportsProps> = ({ inventory }) => {
           </div>
           <div className="space-y-4">
             {topAssets.map((item, i) => (
-              <div key={item.id} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all group">
+              // Fix: Property 'id' changed to 'ID'
+              <div key={item.ID} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all group">
                 <div className="flex items-center gap-4">
                    <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center text-blue-400 font-bold">
                       {i + 1}
                    </div>
                    <div>
-                      <p className="font-bold text-slate-100 truncate max-w-[150px]">{item.equipo}</p>
-                      <p className="text-xs text-slate-400 uppercase font-bold tracking-tighter truncate max-w-[150px]">{item.codigo} • {item.empresa}</p>
+                      {/* Fix: Property 'equipo' changed to 'EQUIPO' */}
+                      <p className="font-bold text-slate-100 truncate max-w-[150px]">{item.EQUIPO}</p>
+                      {/* Fix: Properties 'codigo' and 'empresa' changed to 'CODIGO' and 'EMPRESA' */}
+                      <p className="text-xs text-slate-400 uppercase font-bold tracking-tighter truncate max-w-[150px]">{item.CODIGO} • {item.EMPRESA}</p>
                    </div>
                 </div>
                 <div className="text-right">
-                   <p className="text-lg font-black text-blue-400">{item.coste}</p>
-                   <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest truncate max-w-[100px]">{item.asignado}</p>
+                   {/* Fix: Property 'coste' changed to 'COSTE' */}
+                   <p className="text-lg font-black text-blue-400">{item.COSTE}</p>
+                   {/* Fix: Property 'asignado' changed to 'ASIGNADO' */}
+                   <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest truncate max-w-[100px]">{item.ASIGNADO}</p>
                 </div>
               </div>
             ))}

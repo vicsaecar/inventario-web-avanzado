@@ -41,8 +41,9 @@ const AIChat: React.FC<AIChatProps> = ({ isOpen, onClose, inventory }) => {
       // Create a new instance right before making an API call
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       // Contexto enriquecido para razonamiento complejo
+      // Fix: Properties changed to uppercase as per InventoryItem definition
       const context = JSON.stringify(inventory.map(i => ({ 
-        id: i.codigo, n: i.equipo, e: i.empresa, r: i.asignado, l: i.ubicacion, s: i.estado, c: i.coste, t: i.tipo
+        id: i.CODIGO, n: i.EQUIPO, e: i.EMPRESA, r: i.ASIGNADO, l: i.UBICACION, s: i.ESTADO, c: i.COSTE, t: i.TIPO
       })));
 
       const response = await ai.models.generateContent({

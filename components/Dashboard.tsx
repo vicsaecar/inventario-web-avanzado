@@ -35,7 +35,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
   const statusData = React.useMemo(() => {
     const counts: Record<string, number> = {};
     inventory.forEach(item => {
-      counts[item.estado] = (counts[item.estado] || 0) + 1;
+      // Fix: Property 'estado' changed to 'ESTADO'
+      counts[item.ESTADO] = (counts[item.ESTADO] || 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
   }, [inventory]);
@@ -43,7 +44,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
   const companyData = React.useMemo(() => {
     const counts: Record<string, number> = {};
     inventory.forEach(item => {
-      counts[item.empresa] = (counts[item.empresa] || 0) + 1;
+      // Fix: Property 'empresa' changed to 'EMPRESA'
+      counts[item.EMPRESA] = (counts[item.EMPRESA] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
@@ -52,14 +54,17 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
   }, [inventory]);
 
   const recentAssets = React.useMemo(() => {
-    return [...inventory].sort((a, b) => b.id - a.id).slice(0, 4);
+    // Fix: Property 'id' changed to 'ID'
+    return [...inventory].sort((a, b) => b.ID - a.ID).slice(0, 4);
   }, [inventory]);
 
   const smartAlerts = React.useMemo(() => {
     const alerts = [];
     const highValueNoOwner = inventory.filter(i => {
-      const val = parseFloat(i.coste?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
-      return val > 500 && (i.asignado === 'Sin asignar' || !i.asignado);
+      // Fix: Property 'coste' changed to 'COSTE'
+      const val = parseFloat(i.COSTE?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
+      // Fix: Property 'asignado' changed to 'ASIGNADO'
+      return val > 500 && (i.ASIGNADO === 'Sin asignar' || !i.ASIGNADO);
     });
     
     if (highValueNoOwner.length > 0) {
@@ -72,7 +77,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
       });
     }
 
-    const lostAssets = inventory.filter(i => i.estado === 'Extraviado');
+    // Fix: Property 'estado' changed to 'ESTADO'
+    const lostAssets = inventory.filter(i => i.ESTADO === 'Extraviado');
     if (lostAssets.length > 0) {
       alerts.push({
         id: 'lost-assets',
@@ -206,16 +212,21 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {recentAssets.map(item => (
-            <div key={item.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 group hover:bg-white hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer" onClick={() => setView('inventory')}>
+            // Fix: Property 'id' changed to 'ID'
+            <div key={item.ID} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 group hover:bg-white hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer" onClick={() => setView('inventory')}>
               <div className="flex items-center justify-between mb-4">
                 <div className="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 group-hover:scale-110 transition-transform">
                    <PackageCheck className="text-blue-600" size={18}/>
                 </div>
-                <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase">{item.codigo}</span>
+                {/* Fix: Property 'codigo' changed to 'CODIGO' */}
+                <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase">{item.CODIGO}</span>
               </div>
-              <h4 className="font-bold text-slate-800 truncate mb-1">{item.equipo}</h4>
-              <p className="text-[10px] text-slate-400 font-bold uppercase truncate">{item.asignado}</p>
-              <p className="text-[9px] text-slate-300 font-medium italic truncate mt-1">{item.descripcion || 'Sin descripción'}</p>
+              {/* Fix: Property 'equipo' changed to 'EQUIPO' */}
+              <h4 className="font-bold text-slate-800 truncate mb-1">{item.EQUIPO}</h4>
+              {/* Fix: Property 'asignado' changed to 'ASIGNADO' */}
+              <p className="text-[10px] text-slate-400 font-bold uppercase truncate">{item.ASIGNADO}</p>
+              {/* Fix: Property 'descripcion' changed to 'DESCRIPCION' */}
+              <p className="text-[9px] text-slate-300 font-medium italic truncate mt-1">{item.DESCRIPCION || 'Sin descripción'}</p>
             </div>
           ))}
           {recentAssets.length === 0 && (

@@ -3,10 +3,7 @@ import { InventoryItem, Catalog } from './types';
 
 export const INITIAL_INVENTORY: InventoryItem[] = [
   {
-    id: 1, codigo: "PT001", equipo: "Asus X541Uj-GQ130T", empresa: "Zubi Group Impact", descripcion: "Portátil antiguo recuperado", tipo: "PT_Portatil", propiedad: "Zubi Group Impact", cif: "B98628100", asignado: "Sin asignar", correo: "", adm: "", fecha: "", ubicacion: "La Pinada Lab", estado: "Extraviado", material: "Obsoleto", before: "", byod: "", modelo: "X541UJ", serialNumber: "H1N0CV03M517012", caracteristicas: "", tienda: "", fechaCompra: "", factura: "", coste: "500 €", creadoPor: "Trello", responsable: "vicsaez", dispositivo: "Portatil Basico", tarjetaSim: "", conFecha: "", compania: "", pin: "", numeroTelefono: "", puk: "", tarifa: "", imei1: "", imei2: "", correoSso: "", etiq: ""
-  },
-  {
-    id: 10, codigo: "PT007", equipo: "Lenovo Legion Y520", empresa: "Fundacion Felisa", descripcion: "Portatil Standard (pesado)", tipo: "PT_Portatil", propiedad: "Zubi Group Impact", cif: "B98628100", asignado: "Vivienda F_Felisa", correo: "vivienda@fundacionfelisa.org", adm: "OK", fecha: "2025-11-17", ubicacion: "Matteco", estado: "Prestado", material: "Entregado", before: "Carla Soler", byod: "", modelo: "80WK", serialNumber: "PF0U6H1C", caracteristicas: "Intel Core I7-7700HQ/16GB RAM/500GB", tienda: "", fechaCompra: "", factura: "", coste: "500 €", creadoPor: "vicsaez", responsable: "vicsaez", dispositivo: "Portatil Basico", tarjetaSim: "", conFecha: "", compania: "", pin: "", numeroTelefono: "", puk: "", tarifa: "", imei1: "", imei2: "", correoSso: "vivienda@fundacionfelisa.org", etiq: "SI"
+    ID: 1, CODIGO: "PT001", EQUIPO: "Asus X541Uj-GQ130T", EMPRESA: "Zubi Group Impact", DESCRIPCION: "Portátil antiguo recuperado", TIPO: "PT_Portatil", PROPIEDAD: "Zubi Group Impact", CIF: "B98628100", ASIGNADO: "Sin asignar", CORREO: "", ADM: "", FECHA: "", UBICACION: "La Pinada Lab", ESTADO: "Extraviado", MATERIAL: "Obsoleto", BEFORE: "", BYOD: "NO", MODELO: "X541UJ", SERIAL_NUMBER: "H1N0CV03M517012", CARACTERISTICAS: "", TIENDA: "", FECHA_COMPRA: "", FACTURA: "", COSTE: "500 €", CREADO_POR: "Trello", RESPONSABLE: "vicsaez", DISPOSITIVO: "Portatil Basico", TARJETA_SIM: "", CON_FECHA: "", COMPAÑIA: "", PIN: "", Nº_TELEFONO: "", PUK: "", TARIFA: "", IMEI_1: "", IMEI_2: "", CORREO_SSO: "", ETIQ: ""
   }
 ];
 
