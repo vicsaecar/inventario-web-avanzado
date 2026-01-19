@@ -2,8 +2,9 @@
 import React, { useState } from 'react';
 import { Catalog } from '../types';
 import { 
-  Plus, X, RefreshCcw, Info, Cloud, Globe, ExternalLink, ShieldCheck, 
-  Building2, Store, Tag, MapPin, Layers, Wifi, UserCog, CreditCard, Search
+  Plus, X, Info, Cloud, Globe, ExternalLink, ShieldCheck, 
+  Building2, Store, Tag, MapPin, Layers, Wifi, UserCog, CreditCard, Search,
+  Activity, Package, Smartphone
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -22,15 +23,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
 
   const categories: { key: keyof Catalog | 'cloud'; label: string; icon: React.ReactNode }[] = [
     { key: 'cloud', label: 'Sincronización Cloud', icon: <Cloud size={16}/> },
-    { key: 'empresas', label: 'Empresas', icon: <Building2 size={16}/> },
-    { key: 'tiendas', label: 'Proveedores', icon: <Store size={16}/> },
-    { key: 'tipos', label: 'Tipos de Activo', icon: <Tag size={16}/> },
-    { key: 'ubicaciones', label: 'Ubicaciones', icon: <MapPin size={16}/> },
-    { key: 'estados', label: 'Estados Operativos', icon: <ShieldCheck size={16}/> },
-    { key: 'companias', label: 'Compañías Tel.', icon: <Wifi size={16}/> },
-    { key: 'dispositivos', label: 'Gamas Dispositivo', icon: <Layers size={16}/> },
-    { key: 'creadores', label: 'Responsables', icon: <UserCog size={16}/> },
-    { key: 'propiedades', label: 'Propiedad Legal', icon: <CreditCard size={16}/> }
+    { key: 'PROVEEDOR', label: 'Proveedores', icon: <Store size={16}/> },
+    { key: 'EMPRESA', label: 'Empresas', icon: <Building2 size={16}/> },
+    { key: 'TIPO', label: 'Tipos de Activo', icon: <Tag size={16}/> },
+    { key: 'DISPOSITIVO', label: 'Gamas Dispositivo', icon: <Layers size={16}/> },
+    { key: 'UBICACION', label: 'Ubicaciones', icon: <MapPin size={16}/> },
+    { key: 'PROPIEDAD', label: 'Propiedad Legal', icon: <CreditCard size={16}/> },
+    { key: 'CIF_EMPRESA', label: 'CIF Empresa', icon: <ShieldCheck size={16}/> },
+    { key: 'ESTADO', label: 'Estados Operativos', icon: <Activity size={16}/> },
+    { key: 'MATERIAL', label: 'Materiales', icon: <Package size={16}/> },
+    { key: 'COMPAÑIA', label: 'Compañías Tel.', icon: <Wifi size={16}/> },
+    { key: 'CREADO_POR', label: 'Responsables', icon: <UserCog size={16}/> },
+    { key: 'BYOD', label: 'Política BYOD', icon: <Smartphone size={16}/> }
   ];
 
   const handleAddItem = (e: React.FormEvent) => {
@@ -67,9 +71,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
     <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
       <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row min-h-[700px]">
         {/* Sidebar de Ajustes */}
-        <div className="w-full md:w-80 bg-slate-50 border-r border-slate-200 p-8 flex flex-col">
+        <div className="w-full md:w-80 bg-slate-50 border-r border-slate-200 p-8 flex flex-col overflow-y-auto max-h-[700px] custom-scrollbar">
           <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8 px-2">Configuración Central</h3>
-          <nav className="space-y-2 flex-1">
+          <nav className="space-y-1 flex-1">
             {categories.map((cat) => (
               <button
                 key={cat.key}

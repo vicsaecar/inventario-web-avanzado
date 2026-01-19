@@ -41,17 +41,18 @@ export interface InventoryItem {
 }
 
 export interface Catalog {
-  tiendas: string[];
-  empresas: string[];
-  tipos: string[];
-  dispositivos: string[];
-  ubicaciones: string[];
-  propiedades: string[];
-  cifs: string[];
-  estados: string[];
-  materiales: string[];
-  companias: string[];
-  creadores: string[];
+  PROVEEDOR: string[];
+  EMPRESA: string[];
+  TIPO: string[];
+  DISPOSITIVO: string[];
+  UBICACION: string[];
+  PROPIEDAD: string[];
+  CIF_EMPRESA: string[];
+  ESTADO: string[];
+  MATERIAL: string[];
+  COMPAÑIA: string[];
+  CREADO_POR: string[];
+  BYOD: string[];
 }
 
 export type ViewType = 'dashboard' | 'inventory' | 'reports' | 'settings' | 'add';

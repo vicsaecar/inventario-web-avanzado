@@ -19,16 +19,16 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
 
   const [formData, setFormData] = useState<Partial<InventoryItem>>(
     initialData || {
-      ID: 0, CODIGO: '', EQUIPO: '', EMPRESA: catalog.empresas[0], DESCRIPCION: '',
-      TIPO: catalog.tipos[0], PROPIEDAD: catalog.propiedades[0],
-      CIF: catalog.cifs[0], ASIGNADO: 'Sin asignar', CORREO: '', ADM: '',
-      FECHA: new Date().toISOString().split('T')[0], UBICACION: catalog.ubicaciones[0],
-      ESTADO: catalog.estados[0], MATERIAL: catalog.materiales[0],
-      BEFORE: '', BYOD: 'NO', MODELO: '', SERIAL_NUMBER: '',
-      CARACTERISTICAS: '', TIENDA: catalog.tiendas[0], FECHA_COMPRA: '',
-      FACTURA: '', COSTE: '0 €', CREADO_POR: catalog.creadores[0],
-      RESPONSABLE: catalog.creadores[0], DISPOSITIVO: catalog.dispositivos[0], TARJETA_SIM: '',
-      CON_FECHA: '', COMPAÑIA: catalog.companias[0], PIN: '',
+      ID: 0, CODIGO: '', EQUIPO: '', EMPRESA: catalog.EMPRESA[0], DESCRIPCION: '',
+      TIPO: catalog.TIPO[0], PROPIEDAD: catalog.PROPIEDAD[0],
+      CIF: catalog.CIF_EMPRESA[0], ASIGNADO: 'Sin asignar', CORREO: '', ADM: '',
+      FECHA: new Date().toISOString().split('T')[0], UBICACION: catalog.UBICACION[0],
+      ESTADO: catalog.ESTADO[0], MATERIAL: catalog.MATERIAL[0],
+      BEFORE: '', BYOD: catalog.BYOD[0] || 'NO', MODELO: '', SERIAL_NUMBER: '',
+      CARACTERISTICAS: '', TIENDA: catalog.PROVEEDOR[0], FECHA_COMPRA: '',
+      FACTURA: '', COSTE: '0 €', CREADO_POR: catalog.CREADO_POR[0],
+      RESPONSABLE: catalog.CREADO_POR[0], DISPOSITIVO: catalog.DISPOSITIVO[0], TARJETA_SIM: '',
+      CON_FECHA: '', COMPAÑIA: catalog.COMPAÑIA[0], PIN: '',
       Nº_TELEFONO: '', PUK: '', TARIFA: '', IMEI_1: '', IMEI_2: '',
       CORREO_SSO: '', ETIQ: 'PENDIENTE'
     }
@@ -104,22 +104,22 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="EQUIPO"><input name="EQUIPO" value={formData.EQUIPO} onChange={handleChange} className="form-input" required /></FormGroup>
             <FormGroup label="EMPRESA">
               <select name="EMPRESA" value={formData.EMPRESA} onChange={handleChange} className="form-input">
-                {catalog.empresas.map(e => <option key={e} value={e}>{e}</option>)}
+                {catalog.EMPRESA.map(e => <option key={e} value={e}>{e}</option>)}
               </select>
             </FormGroup>
-            <FormGroup label="CIF">
+            <FormGroup label="CIF_EMPRESA">
               <select name="CIF" value={formData.CIF} onChange={handleChange} className="form-input">
-                {catalog.cifs.map(c => <option key={c} value={c}>{c}</option>)}
+                {catalog.CIF_EMPRESA.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="TIPO">
               <select name="TIPO" value={formData.TIPO} onChange={handleChange} className="form-input">
-                {catalog.tipos.map(t => <option key={t} value={t}>{t}</option>)}
+                {catalog.TIPO.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="PROPIEDAD">
               <select name="PROPIEDAD" value={formData.PROPIEDAD} onChange={handleChange} className="form-input">
-                {catalog.propiedades.map(p => <option key={p} value={p}>{p}</option>)}
+                {catalog.PROPIEDAD.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </FormGroup>
           </div>
@@ -132,30 +132,34 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="ASIGNADO A"><input name="ASIGNADO" value={formData.ASIGNADO} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CORREO"><input name="CORREO" type="email" value={formData.CORREO} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CORREO_SSO"><input name="CORREO_SSO" value={formData.CORREO_SSO} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="RESPONSABLE">
+            <FormGroup label="RESPONSABLE (CREADO_POR)">
               <select name="RESPONSABLE" value={formData.RESPONSABLE} onChange={handleChange} className="form-input">
-                {catalog.creadores.map(c => <option key={c} value={c}>{c}</option>)}
+                {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="UBICACIÓN (UBICACION)">
               <select name="UBICACION" value={formData.UBICACION} onChange={handleChange} className="form-input">
-                {catalog.ubicaciones.map(u => <option key={u} value={u}>{u}</option>)}
+                {catalog.UBICACION.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="ESTADO">
               <select name="ESTADO" value={formData.ESTADO} onChange={handleChange} className="form-input">
-                {catalog.estados.map(s => <option key={s} value={s}>{s}</option>)}
+                {catalog.ESTADO.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="MATERIAL">
               <select name="MATERIAL" value={formData.MATERIAL} onChange={handleChange} className="form-input">
-                {catalog.materiales.map(m => <option key={m} value={m}>{m}</option>)}
+                {catalog.MATERIAL.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="FECHA ALTA (FECHA)"><input name="FECHA" type="date" value={formData.FECHA} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="ADM"><input name="ADM" value={formData.ADM} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="BEFORE"><input name="BEFORE" value={formData.BEFORE} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="BYOD"><input name="BYOD" value={formData.BYOD} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="BYOD">
+              <select name="BYOD" value={formData.BYOD} onChange={handleChange} className="form-input">
+                {catalog.BYOD.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </FormGroup>
             <FormGroup label="ETIQUETA (ETIQ)"><input name="ETIQ" value={formData.ETIQ} onChange={handleChange} className="form-input" /></FormGroup>
           </div>
         </section>
@@ -168,7 +172,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="Nº SERIE (SERIAL_NUMBER)"><input name="SERIAL_NUMBER" value={formData.SERIAL_NUMBER} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="DISPOSITIVO">
               <select name="DISPOSITIVO" value={formData.DISPOSITIVO} onChange={handleChange} className="form-input">
-                {catalog.dispositivos.map(d => <option key={d} value={d}>{d}</option>)}
+                {catalog.DISPOSITIVO.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </FormGroup>
             <div className="md:col-span-3">
@@ -184,7 +188,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="Nº TELÉFONO"><input name="Nº_TELEFONO" value={formData.Nº_TELEFONO} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="COMPAÑÍA">
               <select name="COMPAÑIA" value={formData.COMPAÑIA} onChange={handleChange} className="form-input">
-                {catalog.companias.map(c => <option key={c} value={c}>{c}</option>)}
+                {catalog.COMPAÑIA.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="TARIFA"><input name="TARIFA" value={formData.TARIFA} onChange={handleChange} className="form-input" /></FormGroup>
@@ -201,9 +205,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
         <section className="form-section border-indigo-600">
           <SectionHeader icon={<CreditCard size={20}/>} title="5. Finanzas e Historial" />
           <div className="form-grid lg:grid-cols-4">
-            <FormGroup label="PROVEEDOR (TIENDA)">
+            <FormGroup label="PROVEEDOR">
               <select name="TIENDA" value={formData.TIENDA} onChange={handleChange} className="form-input">
-                {catalog.tiendas.map(t => <option key={t} value={t}>{t}</option>)}
+                {catalog.PROVEEDOR.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </FormGroup>
             <FormGroup label="FECHA COMPRA"><input name="FECHA_COMPRA" type="date" value={formData.FECHA_COMPRA} onChange={handleChange} className="form-input" /></FormGroup>
@@ -211,7 +215,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="COSTE (€)"><input name="COSTE" value={formData.COSTE} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CREADO_POR">
               <select name="CREADO_POR" value={formData.CREADO_POR} onChange={handleChange} className="form-input">
-                {catalog.creadores.map(c => <option key={c} value={c}>{c}</option>)}
+                {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormGroup>
           </div>
