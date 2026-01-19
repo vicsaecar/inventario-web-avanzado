@@ -37,6 +37,16 @@ const App: React.FC = () => {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
+  // Lista maestra de claves para asegurar mapeo 1:1 con el CSV
+  const CSV_COLUMNS = [
+    'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
+    'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
+    'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'TIENDA', 
+    'FECHA_COMPRA', 'FACTURA', 'COSTE', 'CREADO_POR', 'RESPONSABLE', 'DISPOSITIVO', 
+    'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
+    'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
+  ];
+
   const syncWithSheets = useCallback(async () => {
     if (!sheetUrl) {
       const saved = localStorage.getItem('zubi_inventory');
@@ -52,14 +62,18 @@ const App: React.FC = () => {
       
       const data = await response.json();
       if (Array.isArray(data)) {
-        // Mapeador Maestro: Asegura que el objeto JS tenga las 38 claves exactas
+        // Mapeador Maestro: Garantiza que cada objeto tenga las 38 claves exactas
         const processedData = data.map((item, idx) => {
-          const normalized: any = { ...item };
-          normalized.ID = Number(item.ID) || (idx + 1);
-          // Manejo explícito de claves con caracteres especiales si el JSON viene codificado
-          normalized.Nº_TELEFONO = item['Nº_TELEFONO'] || item.Nº_TELEFONO || '';
-          normalized.COMPAÑIA = item['COMPAÑIA'] || item.COMPAÑIA || '';
-          normalized.CREADO_POR = item['CREADO_POR'] || item.CREADO_POR || item.CREADO || '';
+          const normalized: any = {};
+          CSV_COLUMNS.forEach(col => {
+            // Intentar leer la clave tal cual, o con variaciones comunes de codificación (Nº vs N_o)
+            normalized[col] = item[col] !== undefined ? item[col] : 
+                             (item[col.replace('º', '_o')] !== undefined ? item[col.replace('º', '_o')] : 
+                             (item[col.replace('Ñ', 'N')] !== undefined ? item[col.replace('Ñ', 'N')] : ''));
+          });
+          
+          // Forzar ID numérico para ordenación
+          normalized.ID = Number(normalized.ID) || (idx + 1);
           return normalized as InventoryItem;
         });
         
@@ -86,7 +100,8 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data: item })
       });
-      setTimeout(syncWithSheets, 2500); 
+      // Esperar un poco a que Google propague el cambio antes de refrescar
+      setTimeout(syncWithSheets, 3000); 
     } catch (error) {
       console.error("Push Error:", error);
       setSyncError("Fallo al subir datos");
@@ -132,7 +147,7 @@ const App: React.FC = () => {
 
   const handleDeleteItem = async (id: number) => {
     const itemToDelete = inventory.find(i => i.ID === id);
-    if (itemToDelete && window.confirm(`¿Confirmas eliminar el registro #${id} permanentemente?`)) {
+    if (itemToDelete && window.confirm(`¿Confirmas eliminar el registro #${id} permanentemente del Cloud?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
       if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
@@ -144,31 +159,32 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100/50 font-sans">
-      <aside className={`bg-slate-900 text-white transition-all duration-500 ${isSidebarOpen ? 'w-72' : 'w-24'} flex flex-col shrink-0 z-30 shadow-2xl border-r border-white/5`}>
-        <div className="p-6 flex items-center gap-4 border-b border-white/10 h-20 bg-slate-950/50">
+    <div className="flex h-screen overflow-hidden bg-slate-100/50 font-sans text-slate-900">
+      <aside className={`bg-slate-900 text-white transition-all duration-500 ${isSidebarOpen ? 'w-72' : 'w-24'} flex flex-col shrink-0 z-30 shadow-2xl`}>
+        <div className="p-6 flex items-center gap-4 border-b border-white/5 h-20 bg-slate-950/50">
           <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shrink-0">
             <Package size={22} className="text-white" />
           </div>
-          {isSidebarOpen && <h1 className="font-black text-base tracking-widest uppercase">Zubi<span className="text-blue-500 font-light">Inventory</span></h1>}
+          {isSidebarOpen && <h1 className="font-black text-base tracking-widest uppercase truncate">Zubi<span className="text-blue-500 font-light tracking-normal">Stock</span></h1>}
         </div>
 
         <nav className="flex-1 py-8 overflow-y-auto px-4 space-y-2 custom-scrollbar">
-          <NavItem icon={<LayoutDashboard size={20} />} label="Estado General" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
+          <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Activos Maestro" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
-          <NavItem icon={<PlusCircle size={20} />} label="Añadir Activo" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
-          <NavItem icon={<BarChart3 size={20} />} label="Auditoría" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
+          <NavItem icon={<PlusCircle size={20} />} label="Nuevo Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
+          <NavItem icon={<BarChart3 size={20} />} label="Informes" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
 
-        <div className="p-6 border-t border-white/10 bg-slate-950/20 space-y-2">
+        <div className="p-6 border-t border-white/10 space-y-2 bg-slate-950/20">
           {sheetUrl && (
             <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${isSyncing ? 'bg-blue-500/10 text-blue-400' : syncError ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
               <div className="relative shrink-0">
                 {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <Cloud size={16} />}
+                {syncError && <AlertCircle className="absolute -top-1 -right-1 text-rose-500" size={10} />}
               </div>
               {isSidebarOpen && (
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[9px] font-black uppercase tracking-wider">{isSyncing ? 'Conectando...' : syncError ? 'Error Red' : 'Sincronizado'}</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider truncate">{isSyncing ? 'Sincronizando...' : syncError ? 'Fallo Cloud' : 'Enlace Activo'}</span>
                   {lastSync && !syncError && <span className="text-[8px] text-slate-500 font-bold">{lastSync}</span>}
                 </div>
               )}
@@ -182,12 +198,12 @@ const App: React.FC = () => {
         <header className="h-20 bg-white border-b border-slate-200 flex items-center justify-between px-10 shrink-0 z-20 shadow-sm">
           <div className="flex items-center gap-6">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2.5 text-slate-400 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-all"><Menu size={20}/></button>
-            <h2 className="font-black text-slate-900 text-lg tracking-tight uppercase">
-              {view === 'dashboard' && 'Dashboard Principal'}
-              {view === 'inventory' && 'Inventario Maestro (38 Columnas)'}
-              {view === 'add' && (editingItem ? `Editando Activo #${editingItem.ID}` : 'Nuevo Registro')}
-              {view === 'reports' && 'Informes de Capital'}
-              {view === 'settings' && 'Configuración de Sistema'}
+            <h2 className="font-black text-slate-900 text-lg tracking-tight uppercase leading-none">
+              {view === 'dashboard' && 'Control Operativo'}
+              {view === 'inventory' && 'Inventario Maestro (Estructura de 38 Columnas)'}
+              {view === 'add' && (editingItem ? `Editando Activo #${editingItem.ID}` : 'Crear Nuevo Activo')}
+              {view === 'reports' && 'Auditoría de Activos'}
+              {view === 'settings' && 'Gestión de Catálogos'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -195,14 +211,14 @@ const App: React.FC = () => {
               <button 
                 onClick={syncWithSheets} 
                 disabled={isSyncing} 
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-600'}`}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 transition-all font-black text-[10px] uppercase tracking-widest ${isSyncing ? 'text-slate-300' : 'text-blue-600 hover:bg-blue-600 hover:text-white shadow-sm active:scale-95'}`}
               >
                 <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> 
-                Refrescar Sheet
+                Refrescar Nube
               </button>
             )}
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-slate-900 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black hover:bg-blue-600 transition-all shadow-xl uppercase tracking-widest">
-              <Bot size={18} /> IA Consultor
+              <Bot size={18} /> Consultor IA
             </button>
           </div>
         </header>
@@ -219,7 +235,7 @@ const App: React.FC = () => {
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
@@ -229,7 +245,7 @@ const App: React.FC = () => {
 };
 
 const NavItem: React.FC<any> = ({ icon, label, active, onClick, expanded }) => (
-  <button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all ${active ? 'bg-blue-600 text-white shadow-xl' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+  <button onClick={onClick} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20 font-black' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
     <div className="flex shrink-0 w-8 items-center justify-center">{icon}</div>
     {expanded && <span className="text-[10px] font-black uppercase tracking-widest truncate">{label}</span>}
   </button>
