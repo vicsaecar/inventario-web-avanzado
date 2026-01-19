@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   LayoutDashboard, 
   Database, 
@@ -8,11 +8,12 @@ import {
   Settings, 
   Search, 
   Menu, 
-  X,
   Package,
   Bot,
-  Bell,
-  UploadCloud
+  UploadCloud,
+  Cloud,
+  CloudOff,
+  RefreshCw
 } from 'lucide-react';
 import { INITIAL_INVENTORY, CATALOG as INITIAL_CATALOG } from './constants';
 import { InventoryItem, ViewType, Catalog } from './types';
@@ -33,10 +34,47 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('zubi_catalog');
     return saved ? JSON.parse(saved) : INITIAL_CATALOG;
   });
+  const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem('zubi_sheet_url') || '');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+
+  // Sincronización con Google Sheets (Lectura)
+  const syncWithSheets = useCallback(async () => {
+    if (!sheetUrl) return;
+    setIsSyncing(true);
+    try {
+      const response = await fetch(sheetUrl);
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setInventory(data);
+        setLastSync(new Date().toLocaleTimeString());
+      }
+    } catch (error) {
+      console.error("Error sync:", error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [sheetUrl]);
+
+  // Sincronización con Google Sheets (Escritura)
+  const pushToSheets = async (action: 'upsert' | 'delete', item: InventoryItem) => {
+    if (!sheetUrl) return;
+    try {
+      await fetch(sheetUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Necesario para Apps Script en algunos entornos
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, data: item })
+      });
+      // Como usamos 'no-cors', no podemos leer la respuesta, pero el envío se realiza
+    } catch (error) {
+      console.error("Error pushing to sheets:", error);
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('zubi_inventory', JSON.stringify(inventory));
@@ -45,6 +83,15 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('zubi_catalog', JSON.stringify(catalog));
   }, [catalog]);
+
+  useEffect(() => {
+    localStorage.setItem('zubi_sheet_url', sheetUrl);
+  }, [sheetUrl]);
+
+  // Carga inicial desde la nube si hay URL
+  useEffect(() => {
+    if (sheetUrl) syncWithSheets();
+  }, [sheetUrl, syncWithSheets]);
 
   const stats = useMemo(() => {
     return {
@@ -60,134 +107,32 @@ const App: React.FC = () => {
     };
   }, [inventory]);
 
-  const handleImportCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      const lines = text.split(/\r?\n/);
-      if (lines.length < 2) return;
-
-      const headers = lines[0].split(',').map(h => h.trim().toUpperCase());
-      const newItems: InventoryItem[] = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        
-        // Manejo básico de comas dentro de comillas si fuera necesario, pero asumiendo CSV simple
-        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        const item: any = {};
-        
-        headers.forEach((header, index) => {
-          const val = values[index]?.replace(/^"|"$/g, '').trim() || '';
-          
-          // Mapeo manual basado en las cabeceras del usuario
-          switch(header) {
-            case 'ID': item.id = parseInt(val) || i; break;
-            case 'CODIGO': item.codigo = val; break;
-            case 'EQUIPO': item.equipo = val; break;
-            case 'EMPRESA': item.empresa = val; break;
-            case 'DESCRIPCION': item.descripcion = val; break;
-            case 'TIPO': item.tipo = val; break;
-            case 'PROPIEDAD': item.propiedad = val; break;
-            case 'CIF': item.cif = val; break;
-            case 'ASIGNADO': item.asignado = val; break;
-            case 'CORREO': item.correo = val; break;
-            case 'ADM': item.adm = val; break;
-            case 'FECHA': item.fecha = val; break;
-            case 'UBICACION': item.ubicacion = val; break;
-            case 'ESTADO': item.estado = val; break;
-            case 'MATERIAL': item.material = val; break;
-            case 'BEFORE': item.before = val; break;
-            case 'BYOD': item.byod = val; break;
-            case 'MODELO': item.modelo = val; break;
-            case 'SERIAL NUMBER': item.serialNumber = val; break;
-            case 'CARACTERISTICAS': item.caracteristicas = val; break;
-            case 'TIENDA': item.tienda = val; break;
-            case 'FECHA COMPRA': item.fechaCompra = val; break;
-            case 'FACTURA': item.factura = val; break;
-            case 'COSTE': item.coste = val; break;
-            case 'CREADO POR': item.creadoPor = val; break;
-            case 'RESPONSABLE': item.responsable = val; break;
-            case 'DISPOSITIVO': item.dispositivo = val; break;
-            case 'TARJETA SIM': item.tarjetaSim = val; break;
-            case 'CON FECHA': item.conFecha = val; break;
-            case 'COMPAÑIA': item.compania = val; break;
-            case 'PIN': item.pin = val; break;
-            case 'Nº TELEFONO': item.numeroTelefono = val; break;
-            case 'PUK': item.puk = val; break;
-            case 'TARIFA': item.tarifa = val; break;
-            case 'IMEI 1': item.imei1 = val; break;
-            case 'IMEI 2': item.imei2 = val; break;
-            case 'CORREO_SSO': item.correoSso = val; break;
-            case 'ETIQ': item.etiq = val; break;
-          }
-        });
-        if (item.codigo || item.equipo) newItems.push(item as InventoryItem);
-      }
-
-      if (newItems.length > 0) {
-        setInventory(newItems);
-        // Actualizar catálogos automáticamente con los valores importados
-        const updateCatalog = (key: keyof Catalog, field: keyof InventoryItem) => {
-          const uniqueValues = Array.from(new Set(newItems.map(item => String(item[field] || '')).filter(v => v !== '')));
-          setCatalog(prev => ({
-            ...prev,
-            [key]: Array.from(new Set([...prev[key], ...uniqueValues]))
-          }));
-        };
-
-        updateCatalog('empresas', 'empresa');
-        updateCatalog('ubicaciones', 'ubicacion');
-        updateCatalog('tipos', 'tipo');
-        updateCatalog('tiendas', 'tienda');
-        
-        alert(`¡Éxito! Se han importado ${newItems.length} registros.`);
-        setView('inventory');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleAddItem = (newItem: InventoryItem) => {
+  const handleAddItem = async (newItem: InventoryItem) => {
+    let updatedItem = { ...newItem };
     if (editingItem) {
-      setInventory(prev => prev.map(item => item.id === newItem.id ? newItem : item));
+      setInventory(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
       setEditingItem(null);
     } else {
       const nextId = inventory.length > 0 ? Math.max(...inventory.map(i => i.id)) + 1 : 1;
-      setInventory(prev => [...prev, { ...newItem, id: nextId }]);
+      updatedItem = { ...newItem, id: nextId };
+      setInventory(prev => [...prev, updatedItem]);
     }
+    
+    if (sheetUrl) await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
 
-  const handleDeleteItem = (id: number) => {
-    if (window.confirm('¿Confirmas que deseas eliminar este activo permanentemente?')) {
+  const handleDeleteItem = async (id: number) => {
+    const itemToDelete = inventory.find(i => i.id === id);
+    if (itemToDelete && window.confirm('¿Eliminar este activo de la Web y la Hoja de Cálculo?')) {
       setInventory(prev => prev.filter(item => item.id !== id));
+      if (sheetUrl) await pushToSheets('delete', itemToDelete);
     }
   };
 
   const handleEdit = (item: InventoryItem) => {
     setEditingItem(item);
     setView('add');
-  };
-
-  const renderView = () => {
-    switch (view) {
-      case 'dashboard':
-        return <Dashboard stats={stats} inventory={inventory} setView={setView} />;
-      case 'inventory':
-        return <InventoryList inventory={inventory} onEdit={handleEdit} onDelete={handleDeleteItem} initialSearch={globalSearch} />;
-      case 'add':
-        return <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => { setEditingItem(null); setView('inventory'); }} />;
-      case 'reports':
-        return <Reports inventory={inventory} />;
-      case 'settings':
-        return <SettingsView catalog={catalog} setCatalog={setCatalog} />;
-      default:
-        return <Dashboard stats={stats} inventory={inventory} setView={setView} />;
-    }
   };
 
   return (
@@ -197,7 +142,7 @@ const App: React.FC = () => {
           <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-3 rounded-2xl shadow-xl shrink-0">
             <Package size={24} className="text-white" />
           </div>
-          {isSidebarOpen && <h1 className="font-black text-lg tracking-tight uppercase">Zubi <span className="text-blue-500">Inventory</span></h1>}
+          {isSidebarOpen && <h1 className="font-black text-lg tracking-tight uppercase">Zubi <span className="text-blue-500">Sync</span></h1>}
         </div>
 
         <nav className="flex-1 py-10 overflow-y-auto px-4 space-y-2 custom-scrollbar">
@@ -207,12 +152,18 @@ const App: React.FC = () => {
           <NavItem icon={<BarChart3 size={20} />} label="Informes" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
 
-        <div className="p-6 border-t border-white/5 space-y-4">
-          <label className="flex items-center gap-4 px-4 py-4 rounded-2xl cursor-pointer hover:bg-slate-800 text-slate-400 hover:text-white transition-all group">
-            <UploadCloud size={20} className="group-hover:scale-110 transition-transform" />
-            {isSidebarOpen && <span className="text-xs font-black uppercase tracking-widest">Importar CSV</span>}
-            <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
-          </label>
+        <div className="p-6 border-t border-white/5 space-y-2">
+          {sheetUrl && (
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl ${isSyncing ? 'animate-pulse text-blue-400' : 'text-emerald-400'}`}>
+              {isSyncing ? <RefreshCw className="animate-spin" size={16} /> : <Cloud size={16} />}
+              {isSidebarOpen && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-black uppercase">Nube Conectada</span>
+                  {lastSync && <span className="text-[8px] text-slate-500">Sync: {lastSync}</span>}
+                </div>
+              )}
+            </div>
+          )}
           <NavItem icon={<Settings size={20} />} label="Ajustes" active={view === 'settings'} onClick={() => setView('settings')} expanded={isSidebarOpen} />
         </div>
       </aside>
@@ -225,14 +176,14 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="hidden lg:block relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600" size={18} />
-              <input 
-                type="text" placeholder="Búsqueda global..." value={globalSearch}
-                onChange={(e) => { setGlobalSearch(e.target.value); if (view !== 'inventory') setView('inventory'); }}
-                className="bg-slate-50 border-2 border-transparent focus:border-blue-600 focus:bg-white rounded-2xl pl-12 pr-6 py-2.5 text-sm w-64 transition-all outline-none font-bold"
-              />
-            </div>
+            <button 
+              onClick={syncWithSheets} 
+              disabled={!sheetUrl || isSyncing}
+              className={`p-2.5 rounded-xl border-2 transition-all ${!sheetUrl ? 'hidden' : 'border-slate-100 text-slate-400 hover:border-blue-500 hover:text-blue-500'}`}
+              title="Sincronizar ahora con Google Sheets"
+            >
+              <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+            </button>
             <button onClick={() => setIsAIChatOpen(true)} className="flex items-center gap-3 bg-blue-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black hover:bg-black transition-all shadow-xl shadow-blue-500/20">
               <Bot size={18} /> <span className="hidden xl:inline tracking-widest uppercase">Consultor IA</span>
             </button>
@@ -240,7 +191,14 @@ const App: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 custom-scrollbar">
-          {renderView()}
+          {view === 'settings' ? (
+            <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} />
+          ) : (
+            view === 'dashboard' ? <Dashboard stats={stats} inventory={inventory} setView={setView} /> :
+            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={handleEdit} onDelete={handleDeleteItem} initialSearch={globalSearch} /> :
+            view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => { setEditingItem(null); setView('inventory'); }} /> :
+            view === 'reports' ? <Reports inventory={inventory} /> : null
+          )}
         </div>
       </main>
 

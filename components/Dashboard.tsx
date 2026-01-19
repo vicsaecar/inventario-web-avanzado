@@ -215,6 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
               </div>
               <h4 className="font-bold text-slate-800 truncate mb-1">{item.equipo}</h4>
               <p className="text-[10px] text-slate-400 font-bold uppercase truncate">{item.asignado}</p>
+              <p className="text-[9px] text-slate-300 font-medium italic truncate mt-1">{item.descripcion || 'Sin descripción'}</p>
             </div>
           ))}
           {recentAssets.length === 0 && (

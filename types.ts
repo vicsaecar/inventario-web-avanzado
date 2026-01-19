@@ -43,6 +43,7 @@ export interface InventoryItem {
 export interface Catalog {
   tiendas: string[];
   empresas: string[];
+  cifs: string[];
   tipos: string[];
   dispositivos: string[];
   ubicaciones: string[];
