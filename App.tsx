@@ -30,7 +30,7 @@ const App: React.FC = () => {
   });
   const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem('zubi_sheet_url') || '');
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
@@ -45,6 +45,10 @@ const App: React.FC = () => {
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
 
+  const addLog = (msg: string) => {
+    setSyncLogs(prev => [ `${new Date().toLocaleTimeString()} - ${msg}`, ...prev].slice(0, 50));
+  };
+
   const normalizeKey = (s: string) => 
     String(s).toLowerCase()
       .normalize("NFD")
@@ -54,38 +58,55 @@ const App: React.FC = () => {
   const syncWithSheets = useCallback(async (forcedUrl?: string) => {
     const urlToUse = forcedUrl || sheetUrl;
     if (!urlToUse) {
+      addLog("⚠️ No hay URL configurada.");
       const savedInv = localStorage.getItem('zubi_inventory');
       if (savedInv) setInventory(JSON.parse(savedInv));
       return;
     }
     
     setIsSyncing(true);
-    setSyncError(null);
+    addLog("🚀 Iniciando descarga desde Cloud...");
+    
     try {
       const response = await fetch(urlToUse, { method: 'GET', redirect: 'follow' });
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       
       const data = await response.json();
-      console.log("Payload recibido:", data);
+      addLog(`✅ Datos recibidos. Estructura detectada: ${Object.keys(data).join(", ")}`);
 
-      // 1. EXTRAER INVENTARIO (Prioridad absoluta a la clave 'inventario')
-      let rawInvData = data.inventario || data.inventory || (Array.isArray(data) ? data : null);
+      // ESTRATEGIA DE EXTRACCIÓN ROBUSTA
+      // Buscamos específicamente la clave 'inventario' que debería tener los 821 registros
+      let rawInvData = data.inventario || data.inventory;
       
+      if (!rawInvData && Array.isArray(data)) {
+        addLog("ℹ️ El JSON es un array directo. Analizando contenido...");
+        rawInvData = data;
+      }
+
       if (rawInvData && Array.isArray(rawInvData)) {
+        addLog(`📊 Procesando lista de ${rawInvData.length} posibles registros...`);
+        
         const processedInv = rawInvData.map((row: any, idx: number) => {
           const item: any = {};
           
+          // CASO A: La fila es un ARRAY (formato más eficiente de Google Sheets)
           if (Array.isArray(row)) {
-            // Si la fila tiene menos de 20 columnas, probablemente sea basura o del catálogo, la ignoramos
-            if (row.length < 20) return null;
+            // Un registro de inventario REAL debe tener muchas columnas (aprox 38)
+            // Si tiene pocas (como 1 o 2), es probable que sea basura o del catálogo filtrado
+            if (row.length < 15) {
+              if (idx < 5) addLog(`⏭️ Fila ${idx} ignorada: solo ${row.length} columnas.`);
+              return null;
+            }
             
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
               item[col] = (val === null || val === undefined) ? "" : String(val).trim();
             });
-          } else if (typeof row === 'object') {
-            // Si el objeto tiene muy pocas llaves, no es un registro de inventario
-            if (Object.keys(row).length < 10) return null;
+          } 
+          // CASO B: La fila es un OBJETO (formato JSON estándar)
+          else if (typeof row === 'object') {
+            const keysCount = Object.keys(row).length;
+            if (keysCount < 10) return null;
 
             MASTER_COLUMNS.forEach(col => {
               const targetNorm = normalizeKey(col);
@@ -107,17 +128,24 @@ const App: React.FC = () => {
           item.CODIGO.trim() !== ""
         );
 
+        addLog(`🎯 Sincronización exitosa: ${processedInv.length} registros válidos mapeados.`);
+        
         if (processedInv.length > 0) {
           setInventory(processedInv);
           localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
+        } else {
+          addLog("❌ ERROR: No se encontraron registros que cumplan el criterio de Inventario (mín. 15 columnas + CODIGO).");
         }
+      } else {
+        addLog("❌ ERROR: No se encontró la clave 'inventario' o un array válido de datos.");
       }
 
-      // 2. EXTRAER CATÁLOGO (Clave 'catalogo')
+      // PROCESAR CATÁLOGO
       const rawCat = data.catalogo || data.catalog;
       if (rawCat && typeof rawCat === 'object' && !Array.isArray(rawCat)) {
+        addLog("📂 Actualizando catálogos dinámicos...");
         const newCatalog: Catalog = { ...catalog };
-        let updated = false;
+        let updatedCount = 0;
         Object.keys(newCatalog).forEach(key => {
           const sheetKey = Object.keys(rawCat).find(k => normalizeKey(k) === normalizeKey(key));
           const list = rawCat[sheetKey || key];
@@ -125,19 +153,17 @@ const App: React.FC = () => {
             newCatalog[key as keyof Catalog] = list
               .filter((v: any) => v && String(v).trim() !== "" && String(v).toLowerCase() !== normalizeKey(key))
               .map(v => String(v).trim());
-            updated = true;
+            updatedCount++;
           }
         });
-        if (updated) {
-          setCatalog(newCatalog);
-          localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
-        }
+        addLog(`📂 ${updatedCount} categorías de catálogo actualizadas.`);
+        setCatalog(newCatalog);
+        localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
       }
 
       setLastSync(new Date().toLocaleTimeString());
-    } catch (error) {
-      console.error("Sync Failure:", error);
-      setSyncError("Error de sincronización");
+    } catch (error: any) {
+      addLog(`🚨 ERROR CRÍTICO: ${error.message}`);
       const saved = localStorage.getItem('zubi_inventory');
       if (saved) setInventory(JSON.parse(saved));
     } finally {
@@ -148,15 +174,17 @@ const App: React.FC = () => {
   const pushToSheets = async (action: 'upsert' | 'delete' | 'update_catalog', data: any) => {
     if (!sheetUrl) return;
     try {
+      addLog(`📤 Enviando acción '${action}' al Cloud...`);
       await fetch(sheetUrl, {
         method: 'POST',
         mode: 'no-cors', 
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
+      addLog(`📤 Petición enviada. Refrescando en 3s...`);
       setTimeout(() => syncWithSheets(), 3000); 
-    } catch (error) {
-      setSyncError("Error de guardado");
+    } catch (error: any) {
+      addLog(`🚨 Error al guardar: ${error.message}`);
     }
   };
 
@@ -185,7 +213,7 @@ const App: React.FC = () => {
       updatedItem = { ...newItem, ID: nextId };
       setInventory(prev => [...prev, updatedItem]);
     }
-    if (sheetUrl) await pushToSheets('upsert', updatedItem);
+    await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
 
@@ -193,7 +221,7 @@ const App: React.FC = () => {
     const itemToDelete = inventory.find(i => i.ID === id);
     if (itemToDelete && window.confirm(`¿Confirmas eliminar ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
-      if (sheetUrl) await pushToSheets('delete', itemToDelete);
+      await pushToSheets('delete', itemToDelete);
     }
   };
 
@@ -246,7 +274,7 @@ const App: React.FC = () => {
            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={(i) => { setEditingItem(i); setView('add'); }} onDelete={handleDeleteItem} /> :
            view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} /> :
            view === 'reports' ? <Reports inventory={inventory} /> :
-           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} /> : null}
+           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} logs={syncLogs} /> : null}
         </div>
       </main>
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />

@@ -4,7 +4,7 @@ import { Catalog } from '../types';
 import { 
   Plus, X, Info, Cloud, Globe, ExternalLink, ShieldCheck, 
   Building2, Store, Tag, MapPin, Layers, Wifi, UserCog, CreditCard, Search,
-  Activity, Package, Smartphone, Trash2
+  Activity, Package, Smartphone, Trash2, Terminal
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -13,9 +13,10 @@ interface SettingsViewProps {
   sheetUrl: string;
   setSheetUrl: (url: string) => void;
   onCatalogUpdate: (newCatalog: Catalog) => void;
+  logs?: string[];
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetUrl, setSheetUrl, onCatalogUpdate }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetUrl, setSheetUrl, onCatalogUpdate, logs = [] }) => {
   const [activeCategory, setActiveCategory] = useState<keyof Catalog | 'cloud'>('cloud');
   const [newItem, setNewItem] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,7 +97,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
               </button>
             ))}
           </nav>
-          {/* Botón Crítico de Limpieza SIEMPRE visible al final del panel lateral */}
           <div className="p-6 bg-slate-100 border-t border-slate-200 mt-auto">
              <button 
                 onClick={handleClearCache}
@@ -116,8 +116,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
                     <Cloud size={32}/>
                   </div>
                   <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Configuración Cloud</h2>
-                    <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Enlace bidireccional Maestro</p>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Depuración Cloud</h2>
+                    <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Diagnóstico de Sincronización</p>
                   </div>
                </div>
 
@@ -143,6 +143,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
                   </div>
                </div>
 
+               {/* PANEL DE LOGS DE SISTEMA */}
+               <div className="p-8 bg-slate-950 border-2 border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between mb-4">
+                     <div className="flex items-center gap-3">
+                        <Terminal className="text-emerald-400" size={20}/>
+                        <h5 className="font-black text-xs text-emerald-400 uppercase tracking-widest">Logs del Servidor (Diagnóstico)</h5>
+                     </div>
+                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">Eventos recientes: {logs.length}</span>
+                  </div>
+                  <div className="h-64 overflow-y-auto bg-black/30 rounded-2xl p-6 font-mono text-[10px] space-y-2 custom-scrollbar border border-white/5">
+                     {logs.length > 0 ? logs.map((log, i) => (
+                        <div key={i} className={`pb-1 border-b border-white/5 ${log.includes('❌') || log.includes('🚨') ? 'text-rose-400' : log.includes('✅') ? 'text-emerald-400' : 'text-slate-400'}`}>
+                           {log}
+                        </div>
+                     )) : (
+                        <div className="text-slate-600 italic">Esperando eventos de sincronización...</div>
+                     )}
+                  </div>
+               </div>
+
                <div className="p-8 bg-blue-50 border-2 border-blue-100 rounded-[2.5rem]">
                   <div className="flex items-center gap-3 mb-4">
                      <Info className="text-blue-600" size={20}/>
@@ -160,6 +180,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
             </div>
           ) : (
             <div className="animate-in slide-in-from-right-4 duration-500 flex flex-col h-full">
+              {/* ... Resto de la vista de categorías se mantiene igual ... */}
               <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
                   <div className="bg-slate-900 p-3 rounded-2xl text-white shadow-lg">
