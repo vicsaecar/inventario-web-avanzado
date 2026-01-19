@@ -13,7 +13,8 @@ import {
   ShieldAlert,
   Clock,
   UserX,
-  Plus
+  Plus,
+  ArrowRight
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
 import { InventoryItem, ViewType } from '../types';
@@ -50,10 +51,14 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
       .slice(0, 5);
   }, [inventory]);
 
+  const recentAssets = React.useMemo(() => {
+    return [...inventory].sort((a, b) => b.id - a.id).slice(0, 4);
+  }, [inventory]);
+
   const smartAlerts = React.useMemo(() => {
     const alerts = [];
     const highValueNoOwner = inventory.filter(i => {
-      const val = parseFloat(i.coste.replace(/[^\d.-]/g, '').replace(',', '.'));
+      const val = parseFloat(i.coste?.replace(/[^\d.-]/g, '').replace(',', '.') || '0');
       return val > 500 && (i.asignado === 'Sin asignar' || !i.asignado);
     });
     
@@ -120,7 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <StatCard label="Volumen Activos" value={stats.total} icon={<PackageCheck className="text-blue-600" />} trend="Historial consolidado" color="bg-blue-50" />
         <StatCard label="Cómputo / PC" value={stats.laptops} icon={<Laptop className="text-indigo-600" />} trend="Core de la empresa" color="bg-indigo-50" />
-        <StatCard label="Disponibilidad" value={`${Math.round((stats.active/stats.total)*100)}%`} icon={<Activity className="text-emerald-600" />} trend="Tasa de operatividad" color="bg-emerald-50" />
+        <StatCard label="Disponibilidad" value={`${stats.total > 0 ? Math.round((stats.active/stats.total)*100) : 0}%`} icon={<Activity className="text-emerald-600" />} trend="Tasa de operatividad" color="bg-emerald-50" />
         <StatCard label="Capital Invertido" value={`${stats.value.toLocaleString()} €`} icon={<DollarSign className="text-amber-600" />} trend="Valor adquisición" color="bg-amber-50" />
       </div>
 
@@ -180,11 +185,41 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, inventory, setView }) => {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-black text-slate-900">{item.value}</span>
-                  <span className="text-[11px] text-slate-300 font-black">{Math.round((item.value/stats.total)*100)}%</span>
+                  <span className="text-[11px] text-slate-300 font-black">{stats.total > 0 ? Math.round((item.value/stats.total)*100) : 0}%</span>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Recent Activity List */}
+      <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-200">
+        <div className="flex items-center justify-between mb-8">
+          <h3 className="font-black text-slate-900 text-xl flex items-center gap-3 uppercase tracking-tighter">
+            <div className="w-1.5 h-6 bg-emerald-500 rounded-full"></div>
+            Últimos Activos Registrados
+          </h3>
+          <button onClick={() => setView('inventory')} className="text-xs font-black text-slate-500 hover:text-blue-600 transition-colors flex items-center gap-2">
+            Ver todo el inventario <ArrowRight size={14}/>
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {recentAssets.map(item => (
+            <div key={item.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 group hover:bg-white hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer" onClick={() => setView('inventory')}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="bg-white p-2.5 rounded-2xl shadow-sm border border-slate-200 group-hover:scale-110 transition-transform">
+                   <PackageCheck className="text-blue-600" size={18}/>
+                </div>
+                <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded-lg uppercase">{item.codigo}</span>
+              </div>
+              <h4 className="font-bold text-slate-800 truncate mb-1">{item.equipo}</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase truncate">{item.asignado}</p>
+            </div>
+          ))}
+          {recentAssets.length === 0 && (
+            <div className="col-span-full py-10 text-center text-slate-400 font-medium">No hay activos registrados recientemente.</div>
+          )}
         </div>
       </div>
     </div>
