@@ -11,8 +11,7 @@ import {
   Bot,
   Cloud,
   RefreshCw,
-  AlertCircle,
-  Layers
+  AlertCircle
 } from 'lucide-react';
 import { INITIAL_INVENTORY, CATALOG as INITIAL_CATALOG } from './constants';
 import { InventoryItem, ViewType, Catalog } from './types';
@@ -21,7 +20,6 @@ import InventoryList from './components/InventoryList';
 import InventoryForm from './components/InventoryForm';
 import Reports from './components/Reports';
 import SettingsView from './components/SettingsView';
-import CatalogView from './components/CatalogView';
 import AIChat from './components/AIChat';
 
 const App: React.FC = () => {
@@ -86,21 +84,27 @@ const App: React.FC = () => {
           })
           .filter(item => item.CODIGO && item.CODIGO !== "CODIGO");
         
-        setInventory(processedInv);
-        localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
+        if (processedInv.length > 0) {
+          setInventory(processedInv);
+          localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
+        }
       }
 
-      // 2. Sincronización de Catálogo (si existe en el JSON)
-      if (data.catalogo || data.catalog) {
-        const rawCat = data.catalogo || data.catalog;
+      // 2. Sincronización de Catálogo
+      const rawCat = data.catalogo || data.catalog || data;
+      if (rawCat && typeof rawCat === 'object' && !Array.isArray(rawCat)) {
         const newCatalog: Catalog = { ...catalog };
+        let updated = false;
         Object.keys(newCatalog).forEach(key => {
-          if (Array.isArray(rawCat[key])) {
+          if (Array.isArray(rawCat[key]) && rawCat[key].length > 0) {
             newCatalog[key as keyof Catalog] = rawCat[key].filter((v: any) => v && String(v).trim() !== "");
+            updated = true;
           }
         });
-        setCatalog(newCatalog);
-        localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
+        if (updated) {
+          setCatalog(newCatalog);
+          localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
+        }
       }
 
       setLastSync(new Date().toLocaleTimeString());
@@ -186,7 +190,6 @@ const App: React.FC = () => {
         <nav className="flex-1 py-8 overflow-y-auto px-4 space-y-2 custom-scrollbar">
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Inventario" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
-          <NavItem icon={<Layers size={20} />} label="Catálogos" active={view === 'catalog'} onClick={() => setView('catalog')} expanded={isSidebarOpen} />
           <NavItem icon={<PlusCircle size={20} />} label="Alta Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
           <NavItem icon={<BarChart3 size={20} />} label="Auditoría" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
@@ -202,10 +205,9 @@ const App: React.FC = () => {
             <h2 className="font-black text-slate-900 text-lg uppercase tracking-tight">
               {view === 'dashboard' && 'Control Operativo'}
               {view === 'inventory' && 'Inventario Maestro'}
-              {view === 'catalog' && 'Catálogo Maestro de Opciones'}
               {view === 'add' && (editingItem ? `Editando #${editingItem.ID}` : 'Nuevo Registro')}
               {view === 'reports' && 'Auditoría Visual'}
-              {view === 'settings' && 'Configuración de Sistema'}
+              {view === 'settings' && 'Gestión de Sistema y Catálogos'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -222,10 +224,9 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50 custom-scrollbar">
           {view === 'dashboard' ? <Dashboard stats={stats} inventory={inventory} setView={setView} /> :
            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={(i) => { setEditingItem(i); setView('add'); }} onDelete={handleDeleteItem} /> :
-           view === 'catalog' ? <CatalogView catalog={catalog} onUpdate={handleUpdateCatalog} /> :
            view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} /> :
            view === 'reports' ? <Reports inventory={inventory} /> :
-           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} /> : null}
+           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={setSheetUrl} onCatalogUpdate={handleUpdateCatalog} /> : null}
         </div>
       </main>
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />

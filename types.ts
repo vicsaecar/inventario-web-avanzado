@@ -54,4 +54,4 @@ export interface Catalog {
   creadores: string[];
 }
 
-export type ViewType = 'dashboard' | 'inventory' | 'reports' | 'settings' | 'add' | 'catalog';
+export type ViewType = 'dashboard' | 'inventory' | 'reports' | 'settings' | 'add';
