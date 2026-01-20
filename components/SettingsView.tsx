@@ -27,25 +27,45 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
-const HEADERS = [
-  'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
-  'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
-  'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'TIENDA', 
-  'FECHA_COMPRA', 'FACTURA', 'COSTE', 'CREADO_POR', 'RESPONSABLE', 'DISPOSITIVO', 
-  'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
-  'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
-];
 
-function doGet() {
+// Función para devolver JSON exitoso
+function success(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// Función para devolver JSON de error
+function error(msg) {
+  return ContentService.createTextOutput(JSON.stringify({ error: msg }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// LECTURA DE DATOS (GET)
+function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const invSheet = ss.getSheetByName(SHEET_INV);
   const catSheet = ss.getSheetByName(SHEET_CAT);
   
   if (!invSheet || !catSheet) return error("Faltan pestañas 'inventario' o 'catalogo'");
 
+  // Leer Inventario
   const invData = invSheet.getDataRange().getValues();
-  const catData = catSheet.getDataRange().getValues();
+  const headers = invData.length > 0 ? invData[0] : [];
   
+  // Convertir filas a objetos basados en headers
+  const inventoryList = [];
+  if (invData.length > 1) {
+    for (let i = 1; i < invData.length; i++) {
+      let rowObj = {};
+      for (let j = 0; j < headers.length; j++) {
+         rowObj[headers[j]] = invData[i][j];
+      }
+      inventoryList.push(rowObj);
+    }
+  }
+
+  // Leer Catálogo
+  const catData = catSheet.getDataRange().getValues();
   const catalogObj = {};
   if (catData.length > 0) {
     const catHeaders = catData[0];
@@ -55,67 +75,105 @@ function doGet() {
   }
 
   const payload = {
-    inventario: invData.length > 1 ? invData.slice(1) : [],
+    inventario: inventoryList, // Enviamos como objetos para mayor seguridad
     catalogo: catalogObj
   };
   
   return success(payload);
 }
 
+// ESCRITURA DE DATOS (POST)
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) return error("Server busy");
+  if (!lock.tryLock(30000)) return error("Server busy - Lock timeout");
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_INV);
-    if (!sheet) { sheet = ss.insertSheet(SHEET_INV); sheet.appendRow(HEADERS); }
+    if (!sheet) return error("Sheet 'inventario' not found");
     
     const req = JSON.parse(e.postData.contents);
     const action = req.action;
     const data = req.data;
+    
+    // Obtener Headers actuales para mapear columnas dinámicamente
+    const lastCol = sheet.getLastColumn();
+    const headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const headerMap = {};
+    headerValues.forEach((h, i) => { headerMap[h] = i + 1; });
 
     if (action === 'upsert') {
-      const allData = sheet.getDataRange().getValues();
-      const idIdx = HEADERS.indexOf('ID');
+      const allIds = sheet.getRange(2, headerMap['ID'] || 1, sheet.getLastRow() - 1 || 1, 1).getValues().flat();
       let rowIdx = -1;
       
-      // Buscar por ID
-      for (let i = 1; i < allData.length; i++) {
-        if (String(allData[i][idIdx]) == String(data.ID)) {
-          rowIdx = i + 1;
+      // Buscar ID existente (asumiendo ID es numérico)
+      for (let i = 0; i < allIds.length; i++) {
+        if (String(allIds[i]) == String(data.ID)) {
+          rowIdx = i + 2; // +2 porque i empieza en 0 y hay header
           break;
         }
       }
 
-      const rowData = HEADERS.map(h => data[h] || "");
-
-      if (rowIdx > 0) {
-        // Actualizar fila existente
-        sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
-      } else {
-        // Insertar nueva fila
-        sheet.appendRow(rowData);
-        
-        // --- LOGICA DE COPIADO DE FORMATO ---
-        const lastRow = sheet.getLastRow();
-        if (lastRow > 1) {
-          // Copiar formato de la fila anterior (lastRow - 1) a la nueva (lastRow)
-          const sourceRange = sheet.getRange(lastRow - 1, 1, 1, rowData.length);
-          const targetRange = sheet.getRange(lastRow, 1, 1, rowData.length);
-          sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      // Si no existe, creamos nueva fila
+      if (rowIdx === -1) {
+        rowIdx = sheet.getLastRow() + 1;
+        // Si es nueva fila, copiamos formato de la anterior para mantener estética
+        if (rowIdx > 2) {
+             sheet.getRange(rowIdx - 1, 1, 1, lastCol).copyTo(sheet.getRange(rowIdx, 1, 1, lastCol), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
         }
+      }
+
+      // Actualizar celdas celda a celda basado en el nombre de la columna
+      // Esto es más lento pero 100% seguro si las columnas cambian de orden
+      for (const [key, value] of Object.entries(data)) {
+        const colIdx = headerMap[key];
+        if (colIdx) {
+          // Si es fecha, forzar texto para evitar conversiones raras
+          let finalValue = value;
+          if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(key) && value) {
+             finalValue = "'" + value; // El apóstrofe fuerza texto en Google Sheets
+          }
+          sheet.getRange(rowIdx, colIdx).setValue(finalValue);
+        }
+      }
+      
+      // Asegurar que el ID se escribe si es nuevo
+      if (headerMap['ID']) {
+         sheet.getRange(rowIdx, headerMap['ID']).setValue(data.ID);
       }
     } 
     else if (action === 'delete') {
-      const allData = sheet.getDataRange().getValues();
-      const idIdx = HEADERS.indexOf('ID');
-      for (let i = 1; i < allData.length; i++) {
-        if (String(allData[i][idIdx]) == String(data.ID)) {
-          sheet.deleteRow(i + 1);
+      const allIds = sheet.getRange(2, headerMap['ID'] || 1, sheet.getLastRow() - 1 || 1, 1).getValues().flat();
+      for (let i = 0; i < allIds.length; i++) {
+        if (String(allIds[i]) == String(data.ID)) {
+          sheet.deleteRow(i + 2);
           break;
         }
       }
+    }
+    else if (action === 'update_catalog') {
+        const catSheet = ss.getSheetByName(SHEET_CAT);
+        if(catSheet) {
+             catSheet.clear();
+             const newKeys = Object.keys(data);
+             const maxLength = Math.max(...newKeys.map(k => data[k].length));
+             
+             // Escribir headers
+             catSheet.getRange(1, 1, 1, newKeys.length).setValues([newKeys]);
+             
+             // Escribir columnas
+             if (maxLength > 0) {
+                 const rows = [];
+                 for(let i=0; i<maxLength; i++) {
+                     const row = [];
+                     newKeys.forEach(k => {
+                         row.push(data[k][i] || "");
+                     });
+                     rows.push(row);
+                 }
+                 catSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+             }
+        }
     }
 
     return success({ result: "ok" });
@@ -124,16 +182,6 @@ function doPost(e) {
   } finally {
     lock.releaseLock();
   }
-}
-
-function success(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function error(msg) {
-  return ContentService.createTextOutput(JSON.stringify({ error: msg }))
-    .setMimeType(ContentService.MimeType.JSON);
 }`;
 
   const handleCopyCode = () => {
@@ -225,12 +273,12 @@ function error(msg) {
                     <h4 className="font-black text-sm uppercase">¡ACTUALIZACIÓN REQUERIDA EN GOOGLE SCRIPT!</h4>
                   </div>
                   <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    Para que los nuevos registros mantengan el <strong>FORMATO DE CELDA</strong> (colores, bordes) de tu hoja, debes actualizar el script.
+                    Para asegurar la sincronización bidireccional, hemos actualizado el código del conector.
                   </p>
                   <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    1. Copia el código de abajo.<br/>
+                    1. Copia el nuevo código de abajo.<br/>
                     2. Pégalo en tu editor de Google Apps Script.<br/>
-                    3. Pulsa "Implementar" -> "Nueva implementación".
+                    3. Pulsa "Implementar" -> "Nueva implementación" (IMPORTANTE: Crea una NUEVA versión).
                   </p>
                   <div className="relative group">
                     <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">

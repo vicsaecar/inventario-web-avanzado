@@ -102,7 +102,9 @@ const App: React.FC = () => {
     setIsSyncing(true);
     
     try {
-      const response = await fetch(urlToUse, { method: 'GET', redirect: 'follow' });
+      // Aañadimos timestamp para evitar caching del navegador
+      const cacheBuster = `?t=${new Date().getTime()}`;
+      const response = await fetch(`${urlToUse}${cacheBuster}`, { method: 'GET', redirect: 'follow' });
       const data = await response.json();
       
       let rawInvData = data.inventario || (Array.isArray(data) ? data : null);
@@ -228,13 +230,27 @@ const App: React.FC = () => {
     if (!sheetUrl) return;
     try {
       addLog(`📤 Enviando '${action}'...`);
+      
+      // Preparar los datos asegurando el formato de fecha correcto antes de enviar
+      let payloadData = data;
+      if (action === 'upsert' && data) {
+          payloadData = { ...data };
+          // Forzar formato YYYY-MM-DD en los campos de fecha
+          ['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].forEach(field => {
+             if (payloadData[field]) {
+                 payloadData[field] = normalizeDate(payloadData[field]);
+             }
+          });
+      }
+
       await fetch(sheetUrl, {
         method: 'POST',
         mode: 'no-cors', 
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, data })
+        body: JSON.stringify({ action, data: payloadData })
       });
-      setTimeout(() => syncWithSheets(), 2000); 
+      // Esperar un poco más para que GAS termine de procesar antes de releer
+      setTimeout(() => syncWithSheets(), 2500); 
     } catch (error: any) {
       addLog(`🚨 Error guardado: ${error.message}`);
     }
