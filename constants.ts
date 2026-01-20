@@ -1,6 +1,8 @@
 
 import { InventoryItem, Catalog } from './types';
 
+export const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbwrXpGbk2hqkQqGcYxnJgPqjjYCQB32kTSGQCIIyHu386o91wMhx8xcOIazXkuMuk8/exec";
+
 export const INITIAL_INVENTORY: InventoryItem[] = [];
 
 export const CATALOG: Catalog = {

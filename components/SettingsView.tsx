@@ -23,27 +23,107 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  const gasCode = `function doGet() {
+  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM
+
+const SHEET_INV = "inventario";
+const SHEET_CAT = "catalogo";
+const HEADERS = [
+  'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
+  'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
+  'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'TIENDA', 
+  'FECHA_COMPRA', 'FACTURA', 'COSTE', 'CREADO_POR', 'RESPONSABLE', 'DISPOSITIVO', 
+  'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
+  'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
+];
+
+function doGet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const invSheet = ss.getSheetByName("inventario");
-  const catSheet = ss.getSheetByName("catalogo");
+  const invSheet = ss.getSheetByName(SHEET_INV);
+  const catSheet = ss.getSheetByName(SHEET_CAT);
   
+  if (!invSheet || !catSheet) return error("Faltan pestañas 'inventario' o 'catalogo'");
+
   const invData = invSheet.getDataRange().getValues();
   const catData = catSheet.getDataRange().getValues();
   
-  // Procesar catálogo
   const catalogObj = {};
-  const headers = catData[0];
-  headers.forEach((h, i) => {
-    catalogObj[h] = catData.slice(1).map(row => row[i]).filter(v => v !== "");
-  });
+  if (catData.length > 0) {
+    const catHeaders = catData[0];
+    catHeaders.forEach((h, i) => {
+      catalogObj[h] = catData.slice(1).map(row => row[i]).filter(v => v !== "");
+    });
+  }
 
   const payload = {
-    inventario: invData.slice(1), // Enviamos las filas sin cabeceras
+    inventario: invData.length > 1 ? invData.slice(1) : [],
     catalogo: catalogObj
   };
   
-  return ContentService.createTextOutput(JSON.stringify(payload))
+  return success(payload);
+}
+
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return error("Server busy");
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName(SHEET_INV);
+    if (!sheet) { sheet = ss.insertSheet(SHEET_INV); sheet.appendRow(HEADERS); }
+    
+    const req = JSON.parse(e.postData.contents);
+    const action = req.action;
+    const data = req.data;
+
+    if (action === 'upsert') {
+      const allData = sheet.getDataRange().getValues();
+      const idIdx = HEADERS.indexOf('ID');
+      let rowIdx = -1;
+      
+      // Buscar por ID
+      for (let i = 1; i < allData.length; i++) {
+        if (String(allData[i][idIdx]) == String(data.ID)) {
+          rowIdx = i + 1;
+          break;
+        }
+      }
+
+      const rowData = HEADERS.map(h => data[h] || "");
+
+      if (rowIdx > 0) {
+        // Actualizar
+        sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
+      } else {
+        // Insertar
+        sheet.appendRow(rowData);
+      }
+    } 
+    else if (action === 'delete') {
+      const allData = sheet.getDataRange().getValues();
+      const idIdx = HEADERS.indexOf('ID');
+      for (let i = 1; i < allData.length; i++) {
+        if (String(allData[i][idIdx]) == String(data.ID)) {
+          sheet.deleteRow(i + 1);
+          break;
+        }
+      }
+    }
+
+    return success({ result: "ok" });
+  } catch (err) {
+    return error(err.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function success(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function error(msg) {
+  return ContentService.createTextOutput(JSON.stringify({ error: msg }))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
 
@@ -133,10 +213,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
                <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
                   <div className="flex items-center gap-4 text-amber-700">
                     <AlertCircle size={24} />
-                    <h4 className="font-black text-sm uppercase">¡Problema de origen detectado!</h4>
+                    <h4 className="font-black text-sm uppercase">¡ACTUALIZACIÓN REQUERIDA EN GOOGLE SCRIPT!</h4>
                   </div>
                   <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    Si ves 43 registros corrompidos, es porque tu Google Script está enviando la pestaña equivocada. Copia el siguiente código y reemplaza el contenido de tu proyecto en <span className="underline">script.google.com</span>:
+                    Para que la app pueda <strong>GUARDAR</strong> datos en tu hoja, debes actualizar tu script. El código anterior solo permitía leer (doGet). Este nuevo código añade la escritura (doPost).
+                  </p>
+                  <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
+                    1. Copia el código de abajo.<br/>
+                    2. Pégalo en tu editor de Google Apps Script.<br/>
+                    3. Pulsa "Implementar" -> "Nueva implementación".
                   </p>
                   <div className="relative group">
                     <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">

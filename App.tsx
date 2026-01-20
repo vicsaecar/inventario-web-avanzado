@@ -12,7 +12,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
-import { INITIAL_INVENTORY, CATALOG as INITIAL_CATALOG } from './constants';
+import { INITIAL_INVENTORY, CATALOG as INITIAL_CATALOG, DEFAULT_SHEET_URL } from './constants';
 import { InventoryItem, ViewType, Catalog } from './types';
 import Dashboard from './components/Dashboard';
 import InventoryList from './components/InventoryList';
@@ -28,7 +28,8 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('zubi_catalog');
     return saved ? JSON.parse(saved) : INITIAL_CATALOG;
   });
-  const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem('zubi_sheet_url') || '');
+  // Usar DEFAULT_SHEET_URL si no hay nada en localStorage
+  const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem('zubi_sheet_url') || DEFAULT_SHEET_URL);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
   const [lastSync, setLastSync] = useState<string | null>(null);
@@ -103,18 +104,13 @@ const App: React.FC = () => {
         }).filter(item => item !== null && item.CODIGO && item.CODIGO.trim() !== "" && item.CODIGO.toLowerCase() !== "codigo");
 
         // --- MERGE LOGIC START ---
-        // Combinar datos del servidor con cambios locales pendientes (Optimistic UI)
         let finalInv = [...(processedInv || [])];
 
-        // 1. Aplicar borrados pendientes
-        // Si un item está en el servidor pero lo hemos borrado localmente, lo ocultamos.
-        // Si ya no está en el servidor, lo quitamos de la lista de pendientes.
         const currentServerIds = new Set(processedInv.map((i: InventoryItem) => i.ID));
         const newDeletes = new Set<number>();
         
         finalInv = finalInv.filter(item => {
             if (pendingDeletes.current.has(item.ID)) {
-                // Si sigue en el servidor, mantenemos el ID en pendientes para seguir ocultándolo
                 newDeletes.add(item.ID);
                 return false; 
             }
@@ -122,9 +118,6 @@ const App: React.FC = () => {
         });
         pendingDeletes.current = newDeletes;
 
-        // 2. Aplicar nuevos registros pendientes
-        // Si un item pendiente ya llegó al servidor, lo quitamos de pendientes.
-        // Si no, lo inyectamos en la lista local.
         const activeAdds: InventoryItem[] = [];
         pendingAdds.current.forEach(localItem => {
            const exists = finalInv.some(i => i.ID === localItem.ID);
@@ -135,22 +128,18 @@ const App: React.FC = () => {
         });
         pendingAdds.current = activeAdds;
 
-        // 3. Aplicar ediciones pendientes
-        // Si un item editado localmente difiere del servidor, mantenemos la versión local.
         const activeEdits: InventoryItem[] = [];
         pendingEdits.current.forEach(localItem => {
              const idx = finalInv.findIndex(i => i.ID === localItem.ID);
              if (idx !== -1) {
                  const serverItem = finalInv[idx];
-                 // Comprobación simple de sincronización
                  const isSynced = JSON.stringify(serverItem) === JSON.stringify(localItem);
                  
                  if (!isSynced) {
-                     finalInv[idx] = localItem; // Sobrescribir con local
-                     activeEdits.push(localItem); // Mantener en pendientes
+                     finalInv[idx] = localItem;
+                     activeEdits.push(localItem);
                  }
              } else {
-                 // Caso raro: editado pero desaparecido del servidor (¿borrado remoto?). Lo restauramos localmente.
                  finalInv.push(localItem);
                  activeEdits.push(localItem);
              }
@@ -166,7 +155,6 @@ const App: React.FC = () => {
         setLastSync(new Date().toLocaleTimeString());
       }
 
-      // CATÁLOGO
       const rawCat = data.catalogo || data.catalog;
       if (rawCat) {
         const newCatalog: Catalog = { ...catalog };
@@ -187,7 +175,7 @@ const App: React.FC = () => {
     }
   }, [sheetUrl, catalog]);
 
-  // Polling automático para bidireccionalidad real (cada 15s)
+  // Polling automático
   useEffect(() => {
     if (!sheetUrl) return;
     const interval = setInterval(() => {
@@ -206,8 +194,6 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
-      // Sincronización rápida para intentar capturar el cambio si fue rápido, 
-      // pero el Merge Logic protegerá los datos locales si el servidor es lento.
       setTimeout(() => syncWithSheets(), 2000); 
     } catch (error: any) {
       addLog(`🚨 Error guardado: ${error.message}`);
@@ -230,21 +216,13 @@ const App: React.FC = () => {
   const handleAddItem = async (newItem: InventoryItem) => {
     let updatedItem = { ...newItem };
     if (editingItem) {
-      // EDICIÓN
       setInventory(prev => prev.map(item => item.ID === updatedItem.ID ? updatedItem : item));
-      
-      // Registrar en pendientes
       pendingEdits.current = [...pendingEdits.current.filter(i => i.ID !== updatedItem.ID), updatedItem];
-      
       setEditingItem(null);
     } else {
-      // NUEVO
       const nextId = inventory.length > 0 ? Math.max(...inventory.map(i => Number(i.ID) || 0)) + 1 : 1;
       updatedItem = { ...newItem, ID: nextId };
-      
       setInventory(prev => [...prev, updatedItem]);
-      
-      // Registrar en pendientes
       pendingAdds.current = [...pendingAdds.current, updatedItem];
     }
     
@@ -256,10 +234,7 @@ const App: React.FC = () => {
     const itemToDelete = inventory.find(i => i.ID === id);
     if (itemToDelete && window.confirm(`¿Confirmas eliminar ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
-      
-      // Registrar en pendientes
       pendingDeletes.current.add(id);
-
       await pushToSheets('delete', itemToDelete);
     }
   };
