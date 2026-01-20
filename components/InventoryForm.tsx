@@ -18,21 +18,24 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const [formData, setFormData] = useState<Partial<InventoryItem>>(
-    initialData || {
-      ID: 0, CODIGO: '', EQUIPO: '', EMPRESA: catalog.EMPRESA[0], DESCRIPCION: '',
-      TIPO: catalog.TIPO[0], PROPIEDAD: catalog.PROPIEDAD[0],
-      CIF: catalog.CIF_EMPRESA[0], ASIGNADO: 'Sin asignar', CORREO: '', ADM: '',
-      FECHA: new Date().toISOString().split('T')[0], UBICACION: catalog.UBICACION[0],
-      ESTADO: catalog.ESTADO[0], MATERIAL: catalog.MATERIAL[0],
+  // Definimos el estado base (vacío) para poder resetear el formulario antes de volcar datos
+  const defaultFormData: InventoryItem = {
+      ID: 0, CODIGO: '', EQUIPO: '', EMPRESA: catalog.EMPRESA[0] || '', DESCRIPCION: '',
+      TIPO: catalog.TIPO[0] || '', PROPIEDAD: catalog.PROPIEDAD[0] || '',
+      CIF: catalog.CIF_EMPRESA[0] || '', ASIGNADO: 'Sin asignar', CORREO: '', ADM: '',
+      FECHA: new Date().toISOString().split('T')[0], UBICACION: catalog.UBICACION[0] || '',
+      ESTADO: catalog.ESTADO[0] || '', MATERIAL: catalog.MATERIAL[0] || '',
       BEFORE: '', BYOD: catalog.BYOD[0] || 'NO', MODELO: '', SERIAL_NUMBER: '',
-      CARACTERISTICAS: '', TIENDA: catalog.PROVEEDOR[0], FECHA_COMPRA: '',
-      FACTURA: '', COSTE: '0 €', CREADO_POR: catalog.CREADO_POR[0],
-      RESPONSABLE: catalog.CREADO_POR[0], DISPOSITIVO: catalog.DISPOSITIVO[0], TARJETA_SIM: '',
-      CON_FECHA: '', COMPAÑIA: catalog.COMPAÑIA[0], PIN: '',
+      CARACTERISTICAS: '', TIENDA: catalog.PROVEEDOR[0] || '', FECHA_COMPRA: '',
+      FACTURA: '', COSTE: '0 €', CREADO_POR: catalog.CREADO_POR[0] || '',
+      RESPONSABLE: catalog.CREADO_POR[0] || '', DISPOSITIVO: catalog.DISPOSITIVO[0] || '', TARJETA_SIM: '',
+      CON_FECHA: '', COMPAÑIA: catalog.COMPAÑIA[0] || '', PIN: '',
       Nº_TELEFONO: '', PUK: '', TARIFA: '', IMEI_1: '', IMEI_2: '',
       CORREO_SSO: '', ETIQ: 'PENDIENTE'
-    }
+  };
+
+  const [formData, setFormData] = useState<Partial<InventoryItem>>(
+    initialData || defaultFormData
   );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -95,9 +98,15 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
     );
 
     if (lastMatch) {
-        // Rellenamos el formulario inmediatamente con los datos del registro encontrado
-        // Reiniciamos ID para que cuente como nuevo registro
-        setFormData({ ...lastMatch, ID: 0 });
+        // ESTRATEGIA: "Borrar y Llenar"
+        // 1. Usamos 'defaultFormData' para limpiar cualquier dato previo (borrar campos).
+        // 2. Sobreponemos 'lastMatch' para llenar con los datos del registro encontrado.
+        // 3. Forzamos ID a 0 para que sea un registro nuevo.
+        setFormData({ 
+            ...defaultFormData, 
+            ...lastMatch, 
+            ID: 0 
+        });
     } else {
       alert(`No se encontraron registros previos para el dispositivo: ${deviceType}`);
     }
