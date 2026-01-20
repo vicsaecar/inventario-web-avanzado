@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, 
   Database, 
@@ -36,6 +36,11 @@ const App: React.FC = () => {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false);
 
+  // Optimistic UI Refs
+  const pendingAdds = useRef<InventoryItem[]>([]);
+  const pendingEdits = useRef<InventoryItem[]>([]);
+  const pendingDeletes = useRef<Set<number>>(new Set());
+
   const MASTER_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
@@ -65,29 +70,19 @@ const App: React.FC = () => {
     }
     
     setIsSyncing(true);
-    addLog("🚀 Iniciando descarga...");
     
     try {
       const response = await fetch(urlToUse, { method: 'GET', redirect: 'follow' });
       const data = await response.json();
       
-      addLog(`✅ Recibido. Registros brutos: ${Array.isArray(data) ? data.length : 'Formato Objeto'}`);
-
       let rawInvData = data.inventario || (Array.isArray(data) ? data : null);
       
-      // DIAGNÓSTICO DE VOLUMEN
-      if (Array.isArray(rawInvData) && rawInvData.length < 100) {
-        addLog(`⚠️ ADVERTENCIA: Solo han llegado ${rawInvData.length} filas. Probablemente el script de Google solo lee la pestaña de Catálogo.`);
-      }
-
       if (rawInvData && Array.isArray(rawInvData)) {
-        const processedInv = rawInvData.map((row: any, idx: number) => {
+        let processedInv = rawInvData.map((row: any, idx: number) => {
           const item: any = {};
           
           if (Array.isArray(row)) {
-            // Un registro real DEBE tener muchas columnas
             if (row.length < 10) return null; 
-            
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
               item[col] = (val === null || val === undefined) ? "" : String(val).trim();
@@ -107,14 +102,68 @@ const App: React.FC = () => {
           return item as InventoryItem;
         }).filter(item => item !== null && item.CODIGO && item.CODIGO.trim() !== "" && item.CODIGO.toLowerCase() !== "codigo");
 
-        addLog(`🎯 Sincronización: ${processedInv.length} registros válidos de inventario detectados.`);
+        // --- MERGE LOGIC START ---
+        // Combinar datos del servidor con cambios locales pendientes (Optimistic UI)
+        let finalInv = [...(processedInv || [])];
+
+        // 1. Aplicar borrados pendientes
+        // Si un item está en el servidor pero lo hemos borrado localmente, lo ocultamos.
+        // Si ya no está en el servidor, lo quitamos de la lista de pendientes.
+        const currentServerIds = new Set(processedInv.map((i: InventoryItem) => i.ID));
+        const newDeletes = new Set<number>();
         
-        if (processedInv.length > 0) {
-          setInventory(processedInv);
-          localStorage.setItem('zubi_inventory', JSON.stringify(processedInv));
-        } else {
-          addLog("❌ ERROR: Los datos recibidos no parecen ser de Inventario (faltan columnas o encabezados).");
+        finalInv = finalInv.filter(item => {
+            if (pendingDeletes.current.has(item.ID)) {
+                // Si sigue en el servidor, mantenemos el ID en pendientes para seguir ocultándolo
+                newDeletes.add(item.ID);
+                return false; 
+            }
+            return true;
+        });
+        pendingDeletes.current = newDeletes;
+
+        // 2. Aplicar nuevos registros pendientes
+        // Si un item pendiente ya llegó al servidor, lo quitamos de pendientes.
+        // Si no, lo inyectamos en la lista local.
+        const activeAdds: InventoryItem[] = [];
+        pendingAdds.current.forEach(localItem => {
+           const exists = finalInv.some(i => i.ID === localItem.ID);
+           if (!exists) {
+               finalInv.push(localItem);
+               activeAdds.push(localItem);
+           }
+        });
+        pendingAdds.current = activeAdds;
+
+        // 3. Aplicar ediciones pendientes
+        // Si un item editado localmente difiere del servidor, mantenemos la versión local.
+        const activeEdits: InventoryItem[] = [];
+        pendingEdits.current.forEach(localItem => {
+             const idx = finalInv.findIndex(i => i.ID === localItem.ID);
+             if (idx !== -1) {
+                 const serverItem = finalInv[idx];
+                 // Comprobación simple de sincronización
+                 const isSynced = JSON.stringify(serverItem) === JSON.stringify(localItem);
+                 
+                 if (!isSynced) {
+                     finalInv[idx] = localItem; // Sobrescribir con local
+                     activeEdits.push(localItem); // Mantener en pendientes
+                 }
+             } else {
+                 // Caso raro: editado pero desaparecido del servidor (¿borrado remoto?). Lo restauramos localmente.
+                 finalInv.push(localItem);
+                 activeEdits.push(localItem);
+             }
+        });
+        pendingEdits.current = activeEdits;
+        // --- MERGE LOGIC END ---
+
+        if (finalInv.length > 0) {
+          setInventory(finalInv);
+          localStorage.setItem('zubi_inventory', JSON.stringify(finalInv));
         }
+        
+        setLastSync(new Date().toLocaleTimeString());
       }
 
       // CATÁLOGO
@@ -129,16 +178,23 @@ const App: React.FC = () => {
         });
         setCatalog(newCatalog);
         localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
-        addLog("📂 Catálogos actualizados.");
       }
 
-      setLastSync(new Date().toLocaleTimeString());
     } catch (error: any) {
       addLog(`🚨 Error: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
   }, [sheetUrl, catalog]);
+
+  // Polling automático para bidireccionalidad real (cada 15s)
+  useEffect(() => {
+    if (!sheetUrl) return;
+    const interval = setInterval(() => {
+       if (!isSyncing) syncWithSheets();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [sheetUrl, isSyncing, syncWithSheets]);
 
   const pushToSheets = async (action: 'upsert' | 'delete' | 'update_catalog', data: any) => {
     if (!sheetUrl) return;
@@ -150,8 +206,9 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data })
       });
-      addLog(`📤 Ok. Recargando...`);
-      setTimeout(() => syncWithSheets(), 3000); 
+      // Sincronización rápida para intentar capturar el cambio si fue rápido, 
+      // pero el Merge Logic protegerá los datos locales si el servidor es lento.
+      setTimeout(() => syncWithSheets(), 2000); 
     } catch (error: any) {
       addLog(`🚨 Error guardado: ${error.message}`);
     }
@@ -173,13 +230,24 @@ const App: React.FC = () => {
   const handleAddItem = async (newItem: InventoryItem) => {
     let updatedItem = { ...newItem };
     if (editingItem) {
+      // EDICIÓN
       setInventory(prev => prev.map(item => item.ID === updatedItem.ID ? updatedItem : item));
+      
+      // Registrar en pendientes
+      pendingEdits.current = [...pendingEdits.current.filter(i => i.ID !== updatedItem.ID), updatedItem];
+      
       setEditingItem(null);
     } else {
+      // NUEVO
       const nextId = inventory.length > 0 ? Math.max(...inventory.map(i => Number(i.ID) || 0)) + 1 : 1;
       updatedItem = { ...newItem, ID: nextId };
+      
       setInventory(prev => [...prev, updatedItem]);
+      
+      // Registrar en pendientes
+      pendingAdds.current = [...pendingAdds.current, updatedItem];
     }
+    
     await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
@@ -188,6 +256,10 @@ const App: React.FC = () => {
     const itemToDelete = inventory.find(i => i.ID === id);
     if (itemToDelete && window.confirm(`¿Confirmas eliminar ${itemToDelete.CODIGO}?`)) {
       setInventory(prev => prev.filter(item => item.ID !== id));
+      
+      // Registrar en pendientes
+      pendingDeletes.current.add(id);
+
       await pushToSheets('delete', itemToDelete);
     }
   };
