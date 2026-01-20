@@ -233,7 +233,50 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
         </div>
       </form>
       <canvas ref={canvasRef} className="hidden" />
-      <style>{`.form-section { @apply bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden border-l-[12px]; } .form-grid { @apply p-10 grid grid-cols-1 md:grid-cols-2 gap-8; } .form-input { @apply w-full bg-white border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:border-blue-600 outline-none transition-all; }`}</style>
+      <style>{`
+        .form-section { 
+          @apply bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden border-l-[12px]; 
+        } 
+        .form-grid { 
+          @apply p-10 grid grid-cols-1 md:grid-cols-2 gap-8; 
+        } 
+        
+        /* ESTILOS FORZADOS PARA INPUTS DE ALTO CONTRASTE */
+        .form-input { 
+          width: 100%; 
+          background-color: #ffffff !important; /* Fondo blanco puro */
+          color: #000000 !important; /* Texto negro puro */
+          border: 2px solid #cbd5e1 !important; /* Borde slate-300 visible */
+          border-radius: 0.75rem; 
+          padding: 0.75rem 1rem; 
+          font-size: 0.875rem; 
+          font-weight: 700; 
+          outline: none; 
+          transition: all 0.2s;
+          appearance: none;
+          -webkit-appearance: none;
+        }
+        
+        .form-input:focus { 
+          border-color: #2563eb !important; 
+          background-color: #ffffff !important;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Icono personalizado para selects para garantizar visibilidad en fondo blanco */
+        select.form-input {
+          background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23000000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+          background-position: right 1rem center;
+          background-repeat: no-repeat;
+          background-size: 1.25em 1.25em;
+          padding-right: 2.5rem;
+        }
+        
+        ::placeholder {
+          color: #94a3b8 !important; /* Slate 400 */
+          opacity: 1;
+        }
+      `}</style>
     </div>
   );
 };
