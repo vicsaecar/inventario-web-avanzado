@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { InventoryItem, Catalog } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Save, ArrowLeft, Camera, Loader2, X, Info, Copy, FileSpreadsheet } from 'lucide-react';
+import { Save, ArrowLeft, Camera, Loader2, X, Info, Copy, FileSpreadsheet, Wand2 } from 'lucide-react';
 
 interface InventoryFormProps {
   onSubmit: (item: InventoryItem) => void;
@@ -19,7 +19,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Definimos el estado base (vacío) para poder resetear el formulario antes de volcar datos.
-  // IMPORTANTE: No usar valores por defecto del catálogo (index 0) para evitar que aparezcan datos "residuales".
   const defaultFormData: InventoryItem = {
       ID: 0, CODIGO: '', EQUIPO: '', EMPRESA: '', DESCRIPCION: '',
       TIPO: '', PROPIEDAD: '',
@@ -39,9 +38,53 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
     initialData || defaultFormData
   );
 
+  // Función para calcular el siguiente código basado en el prefijo
+  const generateNextCode = (typeValue: string): string => {
+    if (!typeValue) return '';
+    
+    // Extraemos el prefijo. Ej: de "PT_Portatil" sacamos "PT"
+    const prefix = typeValue.split('_')[0]; 
+    if (!prefix) return '';
+
+    // Buscamos el número más alto existente para ese prefijo
+    let maxNum = 0;
+    
+    inventory.forEach(item => {
+        const code = item.CODIGO ? String(item.CODIGO).trim() : '';
+        // Verificamos si el código empieza por el prefijo seleccionado
+        if (code.toUpperCase().startsWith(prefix.toUpperCase())) {
+            // Extraemos solo los números del código
+            const match = code.match(/(\d+)/);
+            if (match) {
+                const num = parseInt(match[0], 10);
+                if (!isNaN(num) && num > maxNum) {
+                    maxNum = num;
+                }
+            }
+        }
+    });
+
+    // Retornamos prefijo + (máximo encontrado + 1)
+    return `${prefix}${maxNum + 1}`;
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    setFormData(prev => {
+        const nextState = { ...prev, [name]: value };
+
+        // Lógica automática: Si cambiamos el TIPO y es un registro nuevo (o no tiene código manual aún)
+        // Calculamos el siguiente código automáticamente
+        if (name === 'TIPO' && (!initialData || initialData.ID === 0)) {
+            const nextCode = generateNextCode(value);
+            if (nextCode) {
+                nextState.CODIGO = nextCode;
+            }
+        }
+
+        return nextState;
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -89,23 +132,23 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
 
   const handleReplicateLast = (deviceType: string) => {
     if (!deviceType) return;
-    
-    // Normalizamos para búsqueda insensible a mayúsculas/espacios
     const target = deviceType.trim().toLowerCase();
-    
-    // Buscar el último registro que coincida con el DISPOSITIVO seleccionado
     const lastMatch = [...inventory].reverse().find(i => 
         (i.DISPOSITIVO || '').trim().toLowerCase() === target
     );
 
     if (lastMatch) {
-        // ESTRATEGIA: "Borrar y Llenar"
-        // Fusionamos con defaultFormData para asegurar que cualquier campo undefined en lastMatch se limpie.
-        setFormData({ 
+        // Al copiar un registro anterior, también obtenemos su TIPO.
+        // Calculamos el nuevo código consecutivo basado en ese TIPO.
+        const nextCode = generateNextCode(lastMatch.TIPO);
+
+        setFormData(prev => ({ 
             ...defaultFormData, 
             ...lastMatch, 
-            ID: 0 
-        });
+            ID: 0,
+            // Asignamos el código calculado. Si falla, mantenemos lo que hubiera o vacío.
+            CODIGO: nextCode || prev.CODIGO || '' 
+        }));
     } else {
       alert(`No se encontraron registros previos para el dispositivo: ${deviceType}`);
     }
@@ -119,7 +162,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter leading-none">REGISTRO SINCRONIZADO</h2>
         </div>
         <div className="flex items-center gap-3">
-          {/* Botón/Selector para Replicar Último Registro */}
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Copy size={14} className="text-slate-500" />
@@ -127,7 +169,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <select
                 onChange={(e) => {
                     handleReplicateLast(e.target.value);
-                    e.target.value = ''; // Resetear el selector
+                    e.target.value = '';
                 }}
                 className="bg-white border-2 border-slate-200 text-slate-600 pl-9 pr-8 py-2.5 rounded-xl text-xs font-black hover:border-blue-600 hover:text-blue-600 transition-all uppercase appearance-none cursor-pointer shadow-sm outline-none focus:ring-2 focus:ring-blue-500 w-40 truncate"
                 defaultValue=""
@@ -149,7 +191,20 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-6">
-            <FormGroup label="CODIGO"><input name="CODIGO" value={formData.CODIGO} onChange={handleChange} className="form-input" required /></FormGroup>
+            <FormGroup label="CODIGO">
+                <div className="relative">
+                    <input name="CODIGO" value={formData.CODIGO} onChange={handleChange} className="form-input pr-10" required placeholder="Se genera auto..." />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
+                        <Wand2 size={14} />
+                    </div>
+                </div>
+            </FormGroup>
+            <FormGroup label="TIPO">
+                <select name="TIPO" value={formData.TIPO} onChange={handleChange} className="form-input">
+                    <option value="">Seleccionar TIPO...</option>
+                    {catalog.TIPO.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+            </FormGroup>
             <FormGroup label="EQUIPO"><input name="EQUIPO" value={formData.EQUIPO} onChange={handleChange} className="form-input" required /></FormGroup>
             <FormGroup label="EMPRESA">
                 <select name="EMPRESA" value={formData.EMPRESA} onChange={handleChange} className="form-input">
@@ -158,12 +213,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
                 </select>
             </FormGroup>
             <FormGroup label="DESCRIPCION"><textarea name="DESCRIPCION" value={formData.DESCRIPCION} onChange={handleChange} rows={1} className="form-input h-[46px] pt-2.5" /></FormGroup>
-            <FormGroup label="TIPO">
-                <select name="TIPO" value={formData.TIPO} onChange={handleChange} className="form-input">
-                    <option value="">Seleccionar...</option>
-                    {catalog.TIPO.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-            </FormGroup>
+            
             <FormGroup label="PROPIEDAD">
                 <select name="PROPIEDAD" value={formData.PROPIEDAD} onChange={handleChange} className="form-input">
                     <option value="">Seleccionar...</option>

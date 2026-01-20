@@ -61,6 +61,35 @@ const App: React.FC = () => {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]/g, "");
 
+  const normalizeDate = (val: any): string => {
+    if (!val) return "";
+    const str = String(val).trim();
+    
+    // Si ya es formato YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    
+    // Si es formato ISO (YYYY-MM-DDTHH:mm:ss.sssZ) que suele devolver Google Sheets
+    if (str.includes('T')) return str.split('T')[0];
+    
+    // Si es formato local DD/MM/YYYY
+    if (str.includes('/') && str.split('/').length === 3) {
+        const parts = str.split('/');
+        const d = parts[0].padStart(2, '0');
+        const m = parts[1].padStart(2, '0');
+        const y = parts[2];
+        // Asumimos orden día/mes/año si el año es el último
+        if (y.length === 4) return `${y}-${m}-${d}`;
+    }
+    
+    // Intento genérico con Date
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+    }
+
+    return str;
+  };
+
   const syncWithSheets = useCallback(async (forcedUrl?: string) => {
     const urlToUse = forcedUrl || sheetUrl;
     if (!urlToUse) {
@@ -86,14 +115,25 @@ const App: React.FC = () => {
             if (row.length < 10) return null; 
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
-              item[col] = (val === null || val === undefined) ? "" : String(val).trim();
+              // Aplicar normalización de fecha para columnas específicas
+              if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(col)) {
+                item[col] = normalizeDate(val);
+              } else {
+                item[col] = (val === null || val === undefined) ? "" : String(val).trim();
+              }
             });
           } else if (typeof row === 'object') {
             if (Object.keys(row).length < 10) return null;
             MASTER_COLUMNS.forEach(col => {
               const targetNorm = normalizeKey(col);
               const foundKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
-              item[col] = String(row[foundKey || col] || "").trim();
+              const val = row[foundKey || col];
+              
+              if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(col)) {
+                item[col] = normalizeDate(val);
+              } else {
+                item[col] = String(val || "").trim();
+              }
             });
           } else {
             return null;
