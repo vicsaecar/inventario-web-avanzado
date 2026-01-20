@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { InventoryItem, Catalog } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Save, ArrowLeft, Camera, Loader2, X, FileText, User, Cpu, Wifi, CreditCard, Info, Copy } from 'lucide-react';
+import { Save, ArrowLeft, Camera, Loader2, X, Info, Copy, FileSpreadsheet } from 'lucide-react';
 
 interface InventoryFormProps {
   onSubmit: (item: InventoryItem) => void;
@@ -99,9 +99,6 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
 
     if (lastMatch) {
         // ESTRATEGIA: "Borrar y Llenar"
-        // 1. Usamos 'defaultFormData' para limpiar cualquier dato previo (borrar campos).
-        // 2. Sobreponemos 'lastMatch' para llenar con los datos del registro encontrado.
-        // 3. Forzamos ID a 0 para que sea un registro nuevo.
         setFormData({ 
             ...defaultFormData, 
             ...lastMatch, 
@@ -128,7 +125,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <select
                 onChange={(e) => {
                     handleReplicateLast(e.target.value);
-                    e.target.value = ''; // Resetear el selector para permitir re-selección del mismo valor
+                    e.target.value = ''; // Resetear el selector
                 }}
                 className="bg-white border-2 border-slate-200 text-slate-600 pl-9 pr-8 py-2.5 rounded-xl text-xs font-black hover:border-blue-600 hover:text-blue-600 transition-all uppercase appearance-none cursor-pointer shadow-sm outline-none focus:ring-2 focus:ring-blue-500 w-40 truncate"
                 defaultValue=""
@@ -143,162 +140,125 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-12">
-        {/* 1. Marco Corporativo */}
-        <section className="form-section border-blue-600">
-          <SectionHeader icon={<FileText size={20}/>} title="1. Identidad y Marco Legal" />
-          <div className="form-grid lg:grid-cols-3">
-            <FormGroup label="CÓDIGO (CODIGO)"><input name="CODIGO" value={formData.CODIGO} onChange={handleChange} className="form-input" required /></FormGroup>
+      <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm p-10">
+        <div className="flex items-center gap-4 border-b border-slate-100 pb-6 mb-8">
+            <div className="bg-slate-50 p-3 rounded-xl text-slate-500"><FileSpreadsheet size={20}/></div>
+            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">DATOS DEL ACTIVO</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-8 gap-y-6">
+            <FormGroup label="CODIGO"><input name="CODIGO" value={formData.CODIGO} onChange={handleChange} className="form-input" required /></FormGroup>
             <FormGroup label="EQUIPO"><input name="EQUIPO" value={formData.EQUIPO} onChange={handleChange} className="form-input" required /></FormGroup>
             <FormGroup label="EMPRESA">
-              <select name="EMPRESA" value={formData.EMPRESA} onChange={handleChange} className="form-input">
-                {catalog.EMPRESA.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
+                <select name="EMPRESA" value={formData.EMPRESA} onChange={handleChange} className="form-input">
+                    {catalog.EMPRESA.map(e => <option key={e} value={e}>{e}</option>)}
+                </select>
             </FormGroup>
-            <FormGroup label="CIF_EMPRESA">
-              <select name="CIF" value={formData.CIF} onChange={handleChange} className="form-input">
-                {catalog.CIF_EMPRESA.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </FormGroup>
+            <FormGroup label="DESCRIPCION"><textarea name="DESCRIPCION" value={formData.DESCRIPCION} onChange={handleChange} rows={1} className="form-input h-[46px] pt-2.5" /></FormGroup>
             <FormGroup label="TIPO">
-              <select name="TIPO" value={formData.TIPO} onChange={handleChange} className="form-input">
-                {catalog.TIPO.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+                <select name="TIPO" value={formData.TIPO} onChange={handleChange} className="form-input">
+                    {catalog.TIPO.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
             </FormGroup>
             <FormGroup label="PROPIEDAD">
-              <select name="PROPIEDAD" value={formData.PROPIEDAD} onChange={handleChange} className="form-input">
-                {catalog.PROPIEDAD.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+                <select name="PROPIEDAD" value={formData.PROPIEDAD} onChange={handleChange} className="form-input">
+                    {catalog.PROPIEDAD.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
             </FormGroup>
-          </div>
-        </section>
-
-        {/* 2. Asignación y Operativa */}
-        <section className="form-section border-emerald-600">
-          <SectionHeader icon={<User size={20}/>} title="2. Asignación y Operativa" />
-          <div className="form-grid lg:grid-cols-4">
-            <FormGroup label="ASIGNADO A"><input name="ASIGNADO" value={formData.ASIGNADO} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="CIF">
+                <select name="CIF" value={formData.CIF} onChange={handleChange} className="form-input">
+                    {catalog.CIF_EMPRESA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            </FormGroup>
+            <FormGroup label="ASIGNADO"><input name="ASIGNADO" value={formData.ASIGNADO} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CORREO"><input name="CORREO" type="email" value={formData.CORREO} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="CORREO_SSO"><input name="CORREO_SSO" value={formData.CORREO_SSO} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="RESPONSABLE (CREADO_POR)">
-              <select name="RESPONSABLE" value={formData.RESPONSABLE} onChange={handleChange} className="form-input">
-                {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </FormGroup>
-            <FormGroup label="UBICACIÓN (UBICACION)">
-              <select name="UBICACION" value={formData.UBICACION} onChange={handleChange} className="form-input">
-                {catalog.UBICACION.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
+            <FormGroup label="ADM"><input name="ADM" value={formData.ADM} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="FECHA"><input name="FECHA" type="date" value={formData.FECHA} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="UBICACION">
+                <select name="UBICACION" value={formData.UBICACION} onChange={handleChange} className="form-input">
+                    {catalog.UBICACION.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
             </FormGroup>
             <FormGroup label="ESTADO">
-              <select name="ESTADO" value={formData.ESTADO} onChange={handleChange} className="form-input">
-                {catalog.ESTADO.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+                <select name="ESTADO" value={formData.ESTADO} onChange={handleChange} className="form-input">
+                    {catalog.ESTADO.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
             </FormGroup>
             <FormGroup label="MATERIAL">
-              <select name="MATERIAL" value={formData.MATERIAL} onChange={handleChange} className="form-input">
-                {catalog.MATERIAL.map(m => <option key={m} value={m}>{m}</option>)}
-              </select>
+                <select name="MATERIAL" value={formData.MATERIAL} onChange={handleChange} className="form-input">
+                    {catalog.MATERIAL.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
             </FormGroup>
-            <FormGroup label="FECHA ALTA (FECHA)"><input name="FECHA" type="date" value={formData.FECHA} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="ADM"><input name="ADM" value={formData.ADM} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="BEFORE"><input name="BEFORE" value={formData.BEFORE} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="BYOD">
-              <select name="BYOD" value={formData.BYOD} onChange={handleChange} className="form-input">
-                {catalog.BYOD.map(b => <option key={b} value={b}>{b}</option>)}
-              </select>
+                <select name="BYOD" value={formData.BYOD} onChange={handleChange} className="form-input">
+                    {catalog.BYOD.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
             </FormGroup>
-            <FormGroup label="ETIQUETA (ETIQ)"><input name="ETIQ" value={formData.ETIQ} onChange={handleChange} className="form-input" /></FormGroup>
-          </div>
-        </section>
-
-        {/* 3. Hardware y Técnico */}
-        <section className="form-section border-amber-600">
-          <SectionHeader icon={<Cpu size={20}/>} title="3. Especificaciones Técnicas" />
-          <div className="form-grid lg:grid-cols-3">
             <FormGroup label="MODELO"><input name="MODELO" value={formData.MODELO} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="Nº SERIE (SERIAL_NUMBER)"><input name="SERIAL_NUMBER" value={formData.SERIAL_NUMBER} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="DISPOSITIVO">
-              <select name="DISPOSITIVO" value={formData.DISPOSITIVO} onChange={handleChange} className="form-input">
-                {catalog.DISPOSITIVO.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+            <FormGroup label="SERIAL_NUMBER"><input name="SERIAL_NUMBER" value={formData.SERIAL_NUMBER} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="CARACTERISTICAS"><textarea name="CARACTERISTICAS" value={formData.CARACTERISTICAS} onChange={handleChange} rows={1} className="form-input h-[46px] pt-2.5" /></FormGroup>
+            <FormGroup label="TIENDA">
+                <select name="TIENDA" value={formData.TIENDA} onChange={handleChange} className="form-input">
+                    {catalog.PROVEEDOR.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
             </FormGroup>
-            <div className="md:col-span-3">
-              <FormGroup label="CARACTERÍSTICAS TÉCNICAS"><textarea name="CARACTERISTICAS" value={formData.CARACTERISTICAS} onChange={handleChange} rows={2} className="form-input" /></FormGroup>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. Conectividad y SIM */}
-        <section className="form-section border-sky-600">
-          <SectionHeader icon={<Wifi size={20}/>} title="4. Comunicaciones y Telefonía" />
-          <div className="form-grid lg:grid-cols-4">
-            <FormGroup label="Nº TELÉFONO"><input name="Nº_TELEFONO" value={formData.Nº_TELEFONO} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="COMPAÑÍA">
-              <select name="COMPAÑIA" value={formData.COMPAÑIA} onChange={handleChange} className="form-input">
-                {catalog.COMPAÑIA.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </FormGroup>
-            <FormGroup label="TARIFA"><input name="TARIFA" value={formData.TARIFA} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="TARJETA_SIM (ICCID)"><input name="TARJETA_SIM" value={formData.TARJETA_SIM} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="PIN"><input name="PIN" value={formData.PIN} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="PUK"><input name="PUK" value={formData.PUK} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="FECHA SIM (CON_FECHA)"><input name="CON_FECHA" type="date" value={formData.CON_FECHA} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="IMEI_1"><input name="IMEI_1" value={formData.IMEI_1} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="IMEI_2"><input name="IMEI_2" value={formData.IMEI_2} onChange={handleChange} className="form-input" /></FormGroup>
-          </div>
-        </section>
-
-        {/* 5. Gestión Financiera */}
-        <section className="form-section border-indigo-600">
-          <SectionHeader icon={<CreditCard size={20}/>} title="5. Finanzas e Historial" />
-          <div className="form-grid lg:grid-cols-4">
-            <FormGroup label="PROVEEDOR">
-              <select name="TIENDA" value={formData.TIENDA} onChange={handleChange} className="form-input">
-                {catalog.PROVEEDOR.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </FormGroup>
-            <FormGroup label="FECHA COMPRA"><input name="FECHA_COMPRA" type="date" value={formData.FECHA_COMPRA} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="FECHA_COMPRA"><input name="FECHA_COMPRA" type="date" value={formData.FECHA_COMPRA} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="FACTURA"><input name="FACTURA" value={formData.FACTURA} onChange={handleChange} className="form-input" /></FormGroup>
-            <FormGroup label="COSTE (€)"><input name="COSTE" value={formData.COSTE} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="COSTE"><input name="COSTE" value={formData.COSTE} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CREADO_POR">
-              <select name="CREADO_POR" value={formData.CREADO_POR} onChange={handleChange} className="form-input">
-                {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+                <select name="CREADO_POR" value={formData.CREADO_POR} onChange={handleChange} className="form-input">
+                    {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
             </FormGroup>
-            <div className="md:col-span-2 lg:col-span-4">
-              <FormGroup label="DESCRIPCIÓN ADICIONAL"><textarea name="DESCRIPCION" value={formData.DESCRIPCION} onChange={handleChange} rows={2} className="form-input" /></FormGroup>
-            </div>
-          </div>
-        </section>
+            <FormGroup label="RESPONSABLE">
+                <select name="RESPONSABLE" value={formData.RESPONSABLE} onChange={handleChange} className="form-input">
+                    {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            </FormGroup>
+            <FormGroup label="DISPOSITIVO">
+                <select name="DISPOSITIVO" value={formData.DISPOSITIVO} onChange={handleChange} className="form-input">
+                    {catalog.DISPOSITIVO.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+            </FormGroup>
+            <FormGroup label="TARJETA_SIM"><input name="TARJETA_SIM" value={formData.TARJETA_SIM} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="CON_FECHA"><input name="CON_FECHA" type="date" value={formData.CON_FECHA} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="COMPAÑIA">
+                <select name="COMPAÑIA" value={formData.COMPAÑIA} onChange={handleChange} className="form-input">
+                    {catalog.COMPAÑIA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+            </FormGroup>
+            <FormGroup label="PIN"><input name="PIN" value={formData.PIN} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="Nº_TELEFONO"><input name="Nº_TELEFONO" value={formData.Nº_TELEFONO} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="PUK"><input name="PUK" value={formData.PUK} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="TARIFA"><input name="TARIFA" value={formData.TARIFA} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="IMEI 1"><input name="IMEI_1" value={formData.IMEI_1} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="IMEI 2"><input name="IMEI_2" value={formData.IMEI_2} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="CORREO_SSO"><input name="CORREO_SSO" value={formData.CORREO_SSO} onChange={handleChange} className="form-input" /></FormGroup>
+            <FormGroup label="ETIQ"><input name="ETIQ" value={formData.ETIQ} onChange={handleChange} className="form-input" /></FormGroup>
+        </div>
 
-        <div className="p-10 bg-white rounded-[2.5rem] border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="mt-10 pt-8 border-t border-slate-100 flex items-center justify-between gap-6">
             <div className="flex items-center gap-4 text-slate-500">
                 <Info size={24} className="text-blue-600" />
-                <p className="text-xs font-bold uppercase tracking-tight italic">Los cambios se guardarán automáticamente en la pestaña 'inventario'.</p>
+                <p className="text-xs font-bold uppercase tracking-tight italic">Los cambios se sincronizarán automáticamente.</p>
             </div>
-            <button type="submit" className="w-full md:w-auto px-16 py-4 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700 shadow-2xl transition-all uppercase text-xs active:scale-95">Guardar en Cloud</button>
+            <button type="submit" className="w-full md:w-auto px-16 py-4 rounded-xl font-black bg-blue-600 text-white hover:bg-blue-700 shadow-2xl transition-all uppercase text-xs active:scale-95">Guardar</button>
         </div>
       </form>
+
       <canvas ref={canvasRef} className="hidden" />
       <style>{`
-        .form-section { 
-          @apply bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden border-l-[12px]; 
-        } 
-        .form-grid { 
-          @apply p-10 grid grid-cols-1 md:grid-cols-2 gap-8; 
-        } 
-        
         /* ESTILOS FORZADOS PARA INPUTS DE ALTO CONTRASTE */
         .form-input { 
           width: 100%; 
-          background-color: #ffffff !important; /* Fondo blanco puro */
-          color: #000000 !important; /* Texto negro puro */
-          border: 2px solid #cbd5e1 !important; /* Borde slate-300 visible */
+          background-color: #f8fafc !important; 
+          color: #0f172a !important; 
+          border: 1px solid #cbd5e1 !important; 
           border-radius: 0.75rem; 
-          padding: 0.75rem 1rem; 
-          font-size: 0.875rem; 
-          font-weight: 700; 
+          padding: 0.65rem 1rem; 
+          font-size: 0.8rem; 
+          font-weight: 600; 
           outline: none; 
           transition: all 0.2s;
           appearance: none;
@@ -308,37 +268,25 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
         .form-input:focus { 
           border-color: #2563eb !important; 
           background-color: #ffffff !important;
-          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
 
-        /* Icono personalizado para selects para garantizar visibilidad en fondo blanco */
+        /* Icono personalizado para selects */
         select.form-input {
-          background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23000000' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-          background-position: right 1rem center;
+          background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+          background-position: right 0.75rem center;
           background-repeat: no-repeat;
-          background-size: 1.25em 1.25em;
+          background-size: 1em 1em;
           padding-right: 2.5rem;
-        }
-        
-        ::placeholder {
-          color: #94a3b8 !important; /* Slate 400 */
-          opacity: 1;
         }
       `}</style>
     </div>
   );
 };
 
-const SectionHeader: React.FC<any> = ({ icon, title }) => (
-  <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/30 flex items-center gap-4">
-    <div className="bg-white p-3 rounded-xl shadow-sm text-slate-600">{icon}</div>
-    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">{title}</h3>
-  </div>
-);
-
 const FormGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="space-y-2.5">
-    <label className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block">{label}</label>
+  <div className="space-y-1.5">
+    <label className="px-1 text-[9px] font-black uppercase tracking-wider text-slate-400 block truncate">{label}</label>
     {children}
   </div>
 );
