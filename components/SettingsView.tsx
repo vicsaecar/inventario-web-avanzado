@@ -91,11 +91,20 @@ function doPost(e) {
       const rowData = HEADERS.map(h => data[h] || "");
 
       if (rowIdx > 0) {
-        // Actualizar
+        // Actualizar fila existente
         sheet.getRange(rowIdx, 1, 1, rowData.length).setValues([rowData]);
       } else {
-        // Insertar
+        // Insertar nueva fila
         sheet.appendRow(rowData);
+        
+        // --- LOGICA DE COPIADO DE FORMATO ---
+        const lastRow = sheet.getLastRow();
+        if (lastRow > 1) {
+          // Copiar formato de la fila anterior (lastRow - 1) a la nueva (lastRow)
+          const sourceRange = sheet.getRange(lastRow - 1, 1, 1, rowData.length);
+          const targetRange = sheet.getRange(lastRow, 1, 1, rowData.length);
+          sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+        }
       }
     } 
     else if (action === 'delete') {
@@ -216,7 +225,7 @@ function error(msg) {
                     <h4 className="font-black text-sm uppercase">¡ACTUALIZACIÓN REQUERIDA EN GOOGLE SCRIPT!</h4>
                   </div>
                   <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    Para que la app pueda <strong>GUARDAR</strong> datos en tu hoja, debes actualizar tu script. El código anterior solo permitía leer (doGet). Este nuevo código añade la escritura (doPost).
+                    Para que los nuevos registros mantengan el <strong>FORMATO DE CELDA</strong> (colores, bordes) de tu hoja, debes actualizar el script.
                   </p>
                   <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
                     1. Copia el código de abajo.<br/>
