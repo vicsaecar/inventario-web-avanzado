@@ -2,16 +2,17 @@
 import React, { useState, useRef } from 'react';
 import { InventoryItem, Catalog } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Save, ArrowLeft, Camera, Loader2, X, FileText, User, Cpu, Wifi, CreditCard, Info } from 'lucide-react';
+import { Save, ArrowLeft, Camera, Loader2, X, FileText, User, Cpu, Wifi, CreditCard, Info, Copy } from 'lucide-react';
 
 interface InventoryFormProps {
   onSubmit: (item: InventoryItem) => void;
   initialData: InventoryItem | null;
   catalog: Catalog;
   onCancel: () => void;
+  inventory: InventoryItem[];
 }
 
-const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, catalog, onCancel }) => {
+const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, catalog, onCancel, inventory }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -82,6 +83,26 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
     } catch (err) { console.error(err); } finally { setIsProcessingImage(false); }
   };
 
+  const handleReplicateLast = (deviceType: string) => {
+    if (!deviceType) return;
+    
+    // Normalizamos para búsqueda insensible a mayúsculas/espacios
+    const target = deviceType.trim().toLowerCase();
+    
+    // Buscar el último registro que coincida con el DISPOSITIVO seleccionado
+    const lastMatch = [...inventory].reverse().find(i => 
+        (i.DISPOSITIVO || '').trim().toLowerCase() === target
+    );
+
+    if (lastMatch) {
+        // Rellenamos el formulario inmediatamente con los datos del registro encontrado
+        // Reiniciamos ID para que cuente como nuevo registro
+        setFormData({ ...lastMatch, ID: 0 });
+    } else {
+      alert(`No se encontraron registros previos para el dispositivo: ${deviceType}`);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
       <div className="sticky top-[-1.5rem] z-[40] bg-slate-50/95 backdrop-blur-md pt-6 pb-6 px-4 -mx-4 border-b border-slate-200 mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -90,6 +111,24 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
           <h2 className="text-3xl font-black text-slate-900 tracking-tighter leading-none">REGISTRO SINCRONIZADO</h2>
         </div>
         <div className="flex items-center gap-3">
+          {/* Botón/Selector para Replicar Último Registro */}
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Copy size={14} className="text-slate-500" />
+            </div>
+            <select
+                onChange={(e) => {
+                    handleReplicateLast(e.target.value);
+                    e.target.value = ''; // Resetear el selector para permitir re-selección del mismo valor
+                }}
+                className="bg-white border-2 border-slate-200 text-slate-600 pl-9 pr-8 py-2.5 rounded-xl text-xs font-black hover:border-blue-600 hover:text-blue-600 transition-all uppercase appearance-none cursor-pointer shadow-sm outline-none focus:ring-2 focus:ring-blue-500 w-40 truncate"
+                defaultValue=""
+            >
+                <option value="" disabled>DISPOSITIVO</option>
+                {catalog.DISPOSITIVO.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+
           <button type="button" onClick={startCamera} className="bg-white border-2 border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-xs font-black hover:border-blue-600 hover:text-blue-600 transition-all uppercase flex items-center gap-2 shadow-sm"><Camera size={16} /> Scan IA</button>
           <button onClick={handleSubmit} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black hover:bg-blue-700 flex items-center gap-2 shadow-lg transition-all uppercase text-xs active:scale-95"><Save size={18} /> Guardar</button>
         </div>

@@ -239,7 +239,7 @@ const App: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50 custom-scrollbar">
           {view === 'dashboard' ? <Dashboard stats={stats} inventory={inventory} setView={setView} /> :
            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={(i) => { setEditingItem(i); setView('add'); }} onDelete={handleDeleteItem} /> :
-           view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} /> :
+           view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} inventory={inventory} /> :
            view === 'reports' ? <Reports inventory={inventory} /> :
            view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} logs={syncLogs} /> : null}
         </div>
