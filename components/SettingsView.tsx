@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Catalog } from '../types';
 import { 
@@ -52,6 +53,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSafeReset = () => {
+    if (window.confirm("¿Estás seguro? Esto borrará la URL de conexión y los datos locales de la caché, pero no afectará a tu Google Sheet.")) {
+      // Borrado Quirúrgico: Solo eliminamos lo nuestro
+      localStorage.removeItem('zubi_catalog');
+      localStorage.removeItem('zubi_inventory');
+      localStorage.removeItem('zubi_sheet_url');
+      // Recarga forzada limpia
+      window.location.reload();
+    }
+  };
+
   const categories: { key: keyof Catalog | 'cloud'; label: string; icon: React.ReactNode }[] = [
     { key: 'cloud', label: 'Sincronización Cloud', icon: <Cloud size={16}/> },
     { key: 'PROVEEDOR', label: 'Proveedores', icon: <Store size={16}/> },
@@ -101,7 +113,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetU
             ))}
           </nav>
           <div className="p-6 bg-slate-100 border-t border-slate-200 mt-auto">
-             <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95"><Trash2 size={16} /> Resetear Cache</button>
+             <button onClick={handleSafeReset} className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95"><Trash2 size={16} /> Resetear Cache</button>
           </div>
         </div>
 

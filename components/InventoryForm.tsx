@@ -218,9 +218,9 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
                 {catalog.CREADO_POR.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </FormGroup>
-          </div>
-          <div className="px-10 pb-10">
+            <div className="md:col-span-2 lg:col-span-4">
               <FormGroup label="DESCRIPCIÓN ADICIONAL"><textarea name="DESCRIPCION" value={formData.DESCRIPCION} onChange={handleChange} rows={2} className="form-input" /></FormGroup>
+            </div>
           </div>
         </section>
 
