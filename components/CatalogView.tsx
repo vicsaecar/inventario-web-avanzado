@@ -24,7 +24,7 @@ const CatalogView: React.FC<CatalogViewProps> = ({ catalog, onCatalogUpdate }) =
     { key: 'DISPOSITIVO', label: 'Gamas Dispositivo', icon: <Layers size={16}/> },
     { key: 'UBICACION', label: 'Ubicaciones', icon: <MapPin size={16}/> },
     { key: 'PROPIEDAD', label: 'Propiedad Legal', icon: <CreditCard size={16}/> },
-    { key: 'CIF', label: 'CIF', icon: <ShieldCheck size={16}/> },
+    { key: 'CIF', label: 'CIF EMPRESA', icon: <ShieldCheck size={16}/> },
     { key: 'ESTADO', label: 'Estados Operativos', icon: <Activity size={16}/> },
     { key: 'MATERIAL', label: 'Materiales', icon: <Package size={16}/> },
     { key: 'COMPAÑIA', label: 'Compañías Tel.', icon: <Wifi size={16}/> },
