@@ -325,7 +325,7 @@ const App: React.FC = () => {
         </div>
       </main>
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }`}</style>
+      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 18px; height: 18px; } .custom-scrollbar::-webkit-scrollbar-track { background: transparent; } .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 20px; border: 5px solid transparent; background-clip: content-box; min-height: 100px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; border-width: 4px; }`}</style>
     </div>
   );
 };
