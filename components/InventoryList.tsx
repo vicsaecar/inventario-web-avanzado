@@ -4,7 +4,7 @@ import {
   Edit3, Trash2, Monitor, Cpu, Search, X, MapPin, Tag, Hash, 
   Smartphone, User, Building2, Calendar, CreditCard, Info, ShieldCheck, Wifi,
   ArrowUpDown, Database, ClipboardList, HardDrive, PhoneCall, Banknote,
-  ArrowUp, ArrowDown
+  ArrowUp, ArrowDown, Filter
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 
@@ -16,15 +16,9 @@ interface InventoryListProps {
 
 const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDelete }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterColumn, setFilterColumn] = useState(''); // Estado para la columna seleccionada
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-
-  const filteredData = useMemo(() => {
-    return inventory.filter(item => {
-      const searchStr = Object.values(item).join(' ').toLowerCase();
-      return searchStr.includes(searchTerm.toLowerCase());
-    });
-  }, [inventory, searchTerm]);
 
   // Lista exacta según la última corrección del usuario
   const MASTER_TABLE_COLUMNS = [
@@ -35,6 +29,22 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
     'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
+
+  const filteredData = useMemo(() => {
+    return inventory.filter(item => {
+      const term = searchTerm.toLowerCase();
+      
+      // Si hay una columna seleccionada, buscamos solo en esa propiedad
+      if (filterColumn) {
+        const value = String((item as any)[filterColumn] || '').toLowerCase();
+        return value.includes(term);
+      }
+      
+      // Búsqueda Global (Comportamiento original)
+      const searchStr = Object.values(item).join(' ').toLowerCase();
+      return searchStr.includes(term);
+    });
+  }, [inventory, searchTerm, filterColumn]);
 
   const handleScrollToTop = () => {
     if (tableContainerRef.current) {
@@ -50,22 +60,51 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
 
   return (
     <div className="flex flex-col h-full space-y-4">
-      {/* Buscador de Alto Impacto */}
+      {/* Buscador de Alto Impacto con Filtro de Columna */}
       <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row gap-6 items-center">
-        <div className="relative flex-1 w-full group">
-          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-all" size={20} />
-          <input 
-            type="text" placeholder="Buscador Maestro de Celdas (Sincronizado 1:1)..." value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-16 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-sm outline-none font-bold transition-all shadow-inner"
-          />
+        
+        <div className="relative flex-1 w-full group flex flex-col sm:flex-row gap-4">
+          {/* Desplegable de Filtro */}
+          <div className="relative shrink-0 min-w-[180px]">
+            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+            <select 
+              value={filterColumn}
+              onChange={(e) => setFilterColumn(e.target.value)}
+              className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-[10px] uppercase font-black tracking-widest outline-none cursor-pointer hover:bg-slate-100 transition-all appearance-none text-slate-600 shadow-sm"
+            >
+              <option value="">Global (Todo)</option>
+              {MASTER_TABLE_COLUMNS.filter(col => col !== 'ID').map(col => (
+                <option key={col} value={col}>{col}</option>
+              ))}
+            </select>
+            {/* Flecha personalizada para el select */}
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
+              <ArrowUpDown size={12} />
+            </div>
+          </div>
+
+          {/* Input de Búsqueda */}
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-all" size={20} />
+            <input 
+              type="text" 
+              placeholder={filterColumn ? `Buscando en columna: ${filterColumn}...` : "Buscador Maestro de Celdas (Sincronizado 1:1)..."}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-sm outline-none font-bold transition-all shadow-inner placeholder:text-slate-400 placeholder:font-medium"
+            />
+          </div>
         </div>
+
+        {/* Contador de Activos */}
         <div className="shrink-0">
            <div className="px-6 py-4 bg-slate-900 rounded-2xl text-white flex items-center gap-4 shadow-xl border border-slate-800">
               <Database className="text-blue-400" size={20} />
               <div className="flex flex-col">
                 <span className="text-[11px] font-black uppercase tracking-[0.2em] leading-none">{filteredData.length} Activos</span>
-                <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">Sincronización Integra</span>
+                <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">
+                  {filterColumn ? `Filtrado por ${filterColumn}` : 'Vista Global'}
+                </span>
               </div>
            </div>
         </div>
