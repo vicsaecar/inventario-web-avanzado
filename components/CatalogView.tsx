@@ -34,11 +34,23 @@ const CatalogView: React.FC<CatalogViewProps> = ({ catalog, onCatalogUpdate }) =
 
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItem.trim()) return;
-    if ((catalog[activeCategory] || []).includes(newItem.trim())) return;
+    const val = newItem.trim();
+    if (!val) return;
+    
+    // Evitar duplicados (case insensitive)
+    const currentList = catalog[activeCategory] || [];
+    if (currentList.some(item => item.toLowerCase() === val.toLowerCase())) {
+        alert("Este valor ya existe en la categoría.");
+        return;
+    }
+    
+    // Añadir y ORDENAR alfabéticamente inmediatamente (localeCompare maneja acentos y ñ)
+    const updatedList = [...currentList, val].sort((a, b) => 
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
     
     // Actualización segura del catálogo
-    const updated = { ...catalog, [activeCategory]: [...(catalog[activeCategory] || []), newItem.trim()] };
+    const updated = { ...catalog, [activeCategory]: updatedList };
     onCatalogUpdate(updated);
     setNewItem('');
   };

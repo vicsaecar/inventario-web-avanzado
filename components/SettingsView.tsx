@@ -14,8 +14,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  // Script GAS V6: Clonado de Formatos y Validaciones (Desplegables)
-  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V6 - Full Clone)
+  // Script GAS V7: Ordenamiento Alfabético de Catálogo + Clonado V6
+  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V7 - Auto Sort Catalog)
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
@@ -166,21 +166,13 @@ function doPost(e) {
         targetRow = lastRow + 1;
         
         // --- LÓGICA DE CLONADO (V6) ---
-        // Copiamos formato y validación de la fila inmediatamente superior
-        // para mantener desplegables y estilos visuales.
         if (targetRow > headerRowIdx + 1) {
            try { 
              var sourceRange = sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn());
              var targetRange = sheet.getRange(targetRow, 1); // Solo necesitamos celda inicio
-             
-             // 1. Copiar Aspecto Visual (Bordes, Colores, Fuentes)
              sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-             
-             // 2. Copiar Reglas de Datos (Desplegables, Checkboxes)
              sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
-           } catch(err) {
-             // Ignoramos errores si la hoja está vacía
-           }
+           } catch(err) {}
         }
       }
 
@@ -216,6 +208,16 @@ function doPost(e) {
         catSheet.clear();
         const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
         catSheet.getRange(1, 1, 1, TARGET_HEADERS.length).setValues([TARGET_HEADERS]);
+
+        // V7: ORDENAR DATOS ANTES DE ESCRIBIR
+        TARGET_HEADERS.forEach(k => {
+           if(data[k] && Array.isArray(data[k])) {
+              data[k].sort(function(a, b) {
+                 return String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
+              });
+           }
+        });
+
         const maxLen = Math.max(...TARGET_HEADERS.map(k => (data[k] || []).length));
         if (maxLen > 0) {
            const rows = [];
@@ -276,10 +278,10 @@ function doPost(e) {
        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
           <div className="flex items-center gap-4 text-amber-700">
             <AlertCircle size={24} />
-            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V6)</h4>
+            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V7)</h4>
           </div>
           <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Este código incluye <b>PASTE_DATA_VALIDATION</b> para clonar los desplegables de la hoja.
+             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Este código incluye ordenamiento alfabético automático de categorías.
           </p>
           <div className="relative group">
             <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
