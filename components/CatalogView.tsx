@@ -93,7 +93,13 @@ const CatalogView: React.FC<CatalogViewProps> = ({ catalog, onCatalogUpdate }) =
               </div>
               <div className="relative">
                  <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                 <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 pr-6 py-2.5 bg-slate-100 border-none rounded-full text-[10px] font-black uppercase focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none" />
+                 <input 
+                   type="text" 
+                   placeholder="Buscar..." 
+                   value={searchTerm} 
+                   onChange={(e) => setSearchTerm(e.target.value)} 
+                   className="pl-10 pr-6 py-2.5 bg-slate-100 border-none rounded-full text-[10px] font-black uppercase focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none w-full sm:w-64 md:w-96" 
+                 />
               </div>
             </div>
 

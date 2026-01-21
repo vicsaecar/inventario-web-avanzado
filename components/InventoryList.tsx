@@ -57,7 +57,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
           <input 
             type="text" placeholder="Buscador Maestro de Celdas (Sincronizado 1:1)..." value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-16 pr-8 py-4.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-sm outline-none font-bold transition-all shadow-inner"
+            className="w-full pl-16 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-sm outline-none font-bold transition-all shadow-inner"
           />
         </div>
         <div className="shrink-0">
