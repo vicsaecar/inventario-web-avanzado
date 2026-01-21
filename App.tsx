@@ -191,7 +191,14 @@ const App: React.FC = () => {
             let countUpdates = 0;
 
             Object.keys(newCatalog).forEach(key => {
-              const exactKey = rawKeys.find(k => k.toUpperCase() === key.toUpperCase());
+              // Búsqueda insensible a mayúsculas
+              let exactKey = rawKeys.find(k => k.toUpperCase() === key.toUpperCase());
+
+              // Fallback especial para caracteres latinos (Ñ) si el servidor no los ha normalizado bien
+              // Si buscamos COMPAÑIA y no está, probamos a buscar COMPANIA
+              if (!exactKey && key === 'COMPAÑIA') {
+                 exactKey = rawKeys.find(k => k.toUpperCase() === 'COMPANIA');
+              }
 
               if (exactKey && Array.isArray(rawCat[exactKey])) {
                 newCatalog[key as keyof Catalog] = rawCat[exactKey]

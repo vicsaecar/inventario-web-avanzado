@@ -14,14 +14,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  // Script GAS V4: Sincronización Directa 1:1
-  // Sin alias: La App usa PROVEEDOR y la Hoja usa PROVEEDOR.
-  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V4 - Direct Sync)
+  // Script GAS V5: Corrección crítica para la letra Ñ (COMPAÑIA)
+  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V5 - Fix Ñ Support)
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
-
-// SIN ALIAS: La coincidencia es directa (Ej: PROVEEDOR -> PROVEEDOR)
 
 function success(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
@@ -31,15 +28,22 @@ function error(msg) {
   return ContentService.createTextOutput(JSON.stringify({ error: msg })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// NORMALIZADOR: Estandariza nombres de columnas
-// Elimina tildes, permite Ñ y º (para Nº_TELEFONO), convierte espacios a guiones bajos
+// NORMALIZADOR V5: Protección robusta de la Ñ
 function normalizeHeader(header) {
-  return String(header)
-    .trim()
-    .toUpperCase()
-    .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "") // Eliminar tildes
-    .replace(/\\s+/g, '_') // Espacios a guiones bajos (Ej: "IMEI 1" -> "IMEI_1")
-    .replace(/[^A-Z0-9_Ñº]/g, ""); // Mantenemos Ñ y º
+  var key = String(header).trim().toUpperCase();
+  
+  // 1. Protegemos la Ñ reemplazándola por un token temporal único
+  // Esto evita que el normalize("NFD") la separe en N + ~ y luego el regex la elimine
+  key = key.replace(/Ñ/g, "###NY###");
+  
+  // 2. Eliminamos tildes de vocales (Á -> A)
+  key = key.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
+  
+  // 3. Restauramos la Ñ
+  key = key.replace(/###NY###/g, "Ñ");
+  
+  // 4. Limpieza final: espacios a guiones bajos, y solo permitimos A-Z, 0-9, _, Ñ, º
+  return key.replace(/\\s+/g, '_').replace(/[^A-Z0-9_Ñº]/g, "");
 }
 
 function findHeaderRow(sheet, keywords) {
@@ -50,8 +54,6 @@ function findHeaderRow(sheet, keywords) {
   for (let i = 0; i < Math.min(data.length, 30); i++) {
     const rowValues = data[i].map(c => normalizeHeader(c));
     const matchCount = normKeywords.filter(k => rowValues.includes(k)).length;
-    
-    // Buscamos coincidencia fuerte
     const threshold = Math.min(3, keywords.length); 
 
     if (matchCount >= threshold && matchCount > bestRow.matchCount) {
@@ -73,18 +75,15 @@ function doGet(e) {
   if (!invSheet || !catSheet) return error("Faltan pestañas 'inventario' o 'catalogo'");
 
   // --- INVENTARIO ---
-  // Buscamos usando headers clave que ahora son EXACTOS
   const invInfo = findHeaderRow(invSheet, ["CODIGO", "EQUIPO", "PROVEEDOR", "SERIAL_NUMBER"]);
   const invHeaders = invInfo.values;
   const invData = invInfo.allData;
   const invStartIndex = invInfo.index + 1;
 
   const inventoryList = [];
-  
   const invHeaderMap = {};
   invHeaders.forEach((h, i) => {
     const norm = normalizeHeader(h);
-    // Mapeo directo: La columna normalizada es la clave
     invHeaderMap[i] = norm;
   });
 
@@ -98,14 +97,14 @@ function doGet(e) {
          rowObj[key] = val;
          if (val && String(val).trim() !== "") hasData = true;
       });
-      // Aseguramos ID si existe columna ID, sino usamos fila
       if (!rowObj.ID) rowObj.ID = i + 1;
-      
       if (hasData) inventoryList.push(rowObj);
     }
   }
 
   // --- CATALOGO ---
+  // IMPORTANTE: Aquí se busca "COMPAÑIA" explícitamente. 
+  // Gracias al fix en normalizeHeader, ahora coincidirá con la hoja.
   const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
   const catInfo = findHeaderRow(catSheet, TARGET_HEADERS);
   const catData = catInfo.allData;
@@ -142,12 +141,10 @@ function doPost(e) {
     const sheet = ss.getSheetByName(SHEET_INV);
     const req = JSON.parse(e.postData.contents);
     
-    // Header dinámico
     const invInfo = findHeaderRow(sheet, ["CODIGO", "EQUIPO", "PROVEEDOR"]);
     const headers = invInfo.values;
     const headerRowIdx = invInfo.index + 1; 
     
-    // Mapeo Escritura: Clave APP -> Columna Index
     const headerMap = {};
     headers.forEach((h, i) => { 
       const rawNorm = normalizeHeader(h);
@@ -176,17 +173,13 @@ function doPost(e) {
 
       if (targetRow === -1) {
         targetRow = lastRow + 1;
-        // Intentar copiar formato
         if (targetRow > headerRowIdx + 1) {
            try { sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn()).copyTo(sheet.getRange(targetRow, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch(err) {}
         }
       }
 
       for (const [key, val] of Object.entries(data)) {
-        // key es la clave de la APP (ej: PROVEEDOR)
-        // normalizeHeader(key) asegura que coincida con lo leído de la hoja
         const targetCol = headerMap[normalizeHeader(key)];
-
         if (targetCol) {
           let valueToWrite = val;
           if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(normalizeHeader(key))) {
@@ -276,10 +269,10 @@ function doPost(e) {
        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
           <div className="flex items-center gap-4 text-amber-700">
             <AlertCircle size={24} />
-            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V4)</h4>
+            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V5)</h4>
           </div>
           <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Copia este código para sincronización exacta (PROVEEDOR, IMEI_1).
+             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Este código incluye la corrección para leer correctamente la columna "COMPAÑIA" (respetando la Ñ).
           </p>
           <div className="relative group">
             <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
