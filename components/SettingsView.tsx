@@ -14,11 +14,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  // Script GAS BLINDADO: Umbral mínimo de coincidencias (Mantenemos la versión segura)
-  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM
+  // Script GAS V4: Sincronización Directa 1:1
+  // Sin alias: La App usa PROVEEDOR y la Hoja usa PROVEEDOR.
+  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V4 - Direct Sync)
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
+
+// SIN ALIAS: La coincidencia es directa (Ej: PROVEEDOR -> PROVEEDOR)
 
 function success(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
@@ -28,20 +31,27 @@ function error(msg) {
   return ContentService.createTextOutput(JSON.stringify({ error: msg })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// BUSQUEDA INTELIGENTE CON UMBRAL DE SEGURIDAD
+// NORMALIZADOR: Estandariza nombres de columnas
+// Elimina tildes, permite Ñ y º (para Nº_TELEFONO), convierte espacios a guiones bajos
+function normalizeHeader(header) {
+  return String(header)
+    .trim()
+    .toUpperCase()
+    .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "") // Eliminar tildes
+    .replace(/\\s+/g, '_') // Espacios a guiones bajos (Ej: "IMEI 1" -> "IMEI_1")
+    .replace(/[^A-Z0-9_Ñº]/g, ""); // Mantenemos Ñ y º
+}
+
 function findHeaderRow(sheet, keywords) {
   const data = sheet.getDataRange().getValues();
   let bestRow = { index: -1, values: [], allData: data, matchCount: 0 };
+  const normKeywords = keywords.map(k => normalizeHeader(k));
 
-  // Escaneamos las primeras 30 filas
   for (let i = 0; i < Math.min(data.length, 30); i++) {
-    const rowValues = data[i].map(c => String(c).trim().toUpperCase());
-    // Contamos coincidencias exactas
-    const matchCount = keywords.filter(k => rowValues.includes(k.toUpperCase())).length;
+    const rowValues = data[i].map(c => normalizeHeader(c));
+    const matchCount = normKeywords.filter(k => rowValues.includes(k)).length;
     
-    // UMBRAL CRÍTICO: Ignoramos filas con menos de 3 coincidencias para evitar
-    // confundir un título (ej: "LISTADO CIF") con la cabecera real.
-    // Si la hoja tiene pocas columnas, ajustamos el umbral dinámicamente.
+    // Buscamos coincidencia fuerte
     const threshold = Math.min(3, keywords.length); 
 
     if (matchCount >= threshold && matchCount > bestRow.matchCount) {
@@ -49,11 +59,9 @@ function findHeaderRow(sheet, keywords) {
     }
   }
 
-  // Si no encontramos nada con el umbral, usamos la primera fila por defecto (fallback)
   if (bestRow.index === -1) {
      return { index: 0, values: data[0] || [], allData: data, matchCount: 0 };
   }
-
   return bestRow;
 }
 
@@ -65,70 +73,64 @@ function doGet(e) {
   if (!invSheet || !catSheet) return error("Faltan pestañas 'inventario' o 'catalogo'");
 
   // --- INVENTARIO ---
-  const invInfo = findHeaderRow(invSheet, ["ID", "CODIGO", "EQUIPO", "EMPRESA"]);
+  // Buscamos usando headers clave que ahora son EXACTOS
+  const invInfo = findHeaderRow(invSheet, ["CODIGO", "EQUIPO", "PROVEEDOR", "SERIAL_NUMBER"]);
   const invHeaders = invInfo.values;
   const invData = invInfo.allData;
   const invStartIndex = invInfo.index + 1;
 
   const inventoryList = [];
+  
+  const invHeaderMap = {};
+  invHeaders.forEach((h, i) => {
+    const norm = normalizeHeader(h);
+    // Mapeo directo: La columna normalizada es la clave
+    invHeaderMap[i] = norm;
+  });
+
   if (invData.length > invStartIndex) {
     for (let i = invStartIndex; i < invData.length; i++) {
       let rowObj = {};
       let hasData = false;
-      for (let j = 0; j < invHeaders.length; j++) {
-         const header = String(invHeaders[j]).trim();
-         if (header) {
-           rowObj[header] = invData[i][j];
-           if (rowObj[header]) hasData = true;
-         }
-      }
+      Object.keys(invHeaderMap).forEach(colIdx => {
+         const key = invHeaderMap[colIdx];
+         const val = invData[i][colIdx];
+         rowObj[key] = val;
+         if (val && String(val).trim() !== "") hasData = true;
+      });
+      // Aseguramos ID si existe columna ID, sino usamos fila
+      if (!rowObj.ID) rowObj.ID = i + 1;
+      
       if (hasData) inventoryList.push(rowObj);
     }
   }
 
   // --- CATALOGO ---
   const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
-  
   const catInfo = findHeaderRow(catSheet, TARGET_HEADERS);
-  const catHeaders = catInfo.values;
   const catData = catInfo.allData;
   const catStartIndex = catInfo.index + 1;
+  const catHeaders = catInfo.values;
 
   const catalogObj = {};
   TARGET_HEADERS.forEach(k => catalogObj[k] = []);
-
-  const headerMap = {};
-  const usedColumns = new Set(); // Evitar colisiones de columnas
-  
-  // Mapeo Estricto
+  const catHeaderMap = {};
   catHeaders.forEach((h, i) => {
-    const key = String(h).trim().toUpperCase();
-    if (TARGET_HEADERS.includes(key)) {
-       const normalizedKey = TARGET_HEADERS.find(k => k === key);
-       // Si esta clave no está mapeada Y esta columna no ha sido usada
-       if (!headerMap.hasOwnProperty(normalizedKey) && !usedColumns.has(i)) {
-          headerMap[normalizedKey] = i;
-          usedColumns.add(i);
-       }
-    }
+    const norm = normalizeHeader(h);
+    if (TARGET_HEADERS.includes(norm)) catHeaderMap[norm] = i;
   });
 
   if (catData.length > catStartIndex) {
     for (let i = catStartIndex; i < catData.length; i++) {
-       Object.keys(headerMap).forEach(key => {
-         const colIdx = headerMap[key];
+       Object.keys(catHeaderMap).forEach(key => {
+         const colIdx = catHeaderMap[key];
          const val = catData[i][colIdx];
-         if (val && String(val).trim() !== "") {
-           catalogObj[key].push(String(val).trim());
-         }
+         if (val && String(val).trim() !== "") catalogObj[key].push(String(val).trim());
        });
     }
   }
 
-  return success({
-    inventario: inventoryList,
-    catalogo: catalogObj
-  });
+  return success({ inventario: inventoryList, catalogo: catalogObj });
 }
 
 function doPost(e) {
@@ -140,84 +142,85 @@ function doPost(e) {
     const sheet = ss.getSheetByName(SHEET_INV);
     const req = JSON.parse(e.postData.contents);
     
-    // Header dinámico inventario
-    const invInfo = findHeaderRow(sheet, ["ID", "CODIGO"]);
+    // Header dinámico
+    const invInfo = findHeaderRow(sheet, ["CODIGO", "EQUIPO", "PROVEEDOR"]);
     const headers = invInfo.values;
     const headerRowIdx = invInfo.index + 1; 
     
+    // Mapeo Escritura: Clave APP -> Columna Index
     const headerMap = {};
     headers.forEach((h, i) => { 
-      const key = String(h).trim();
-      if(key) headerMap[key] = i + 1; 
+      const rawNorm = normalizeHeader(h);
+      headerMap[rawNorm] = i + 1;
     });
 
     const action = req.action;
-    const data = req.data;
+    const data = req.data; 
 
     if (action === 'upsert') {
       const lastRow = sheet.getLastRow();
       let targetRow = -1;
       
       if (headerMap['ID'] && data.ID) {
-        const idsRange = sheet.getRange(headerRowIdx + 1, headerMap['ID'], Math.max(lastRow - headerRowIdx, 1), 1);
-        const ids = idsRange.getValues().flat();
-        for(let i=0; i<ids.length; i++) {
-          if(String(ids[i]) == String(data.ID)) {
-            targetRow = headerRowIdx + 1 + i;
-            break;
-          }
+        const numRows = Math.max(lastRow - headerRowIdx, 0);
+        if (numRows > 0) {
+            const ids = sheet.getRange(headerRowIdx + 1, headerMap['ID'], numRows, 1).getValues().flat();
+            for(let i=0; i<ids.length; i++) {
+              if(String(ids[i]) == String(data.ID)) {
+                targetRow = headerRowIdx + 1 + i;
+                break;
+              }
+            }
         }
       }
 
       if (targetRow === -1) {
         targetRow = lastRow + 1;
+        // Intentar copiar formato
         if (targetRow > headerRowIdx + 1) {
-           try {
-             sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn()).copyTo(sheet.getRange(targetRow, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-           } catch(err) {}
+           try { sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn()).copyTo(sheet.getRange(targetRow, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch(err) {}
         }
       }
 
       for (const [key, val] of Object.entries(data)) {
-        if (headerMap[key]) {
+        // key es la clave de la APP (ej: PROVEEDOR)
+        // normalizeHeader(key) asegura que coincida con lo leído de la hoja
+        const targetCol = headerMap[normalizeHeader(key)];
+
+        if (targetCol) {
           let valueToWrite = val;
-          if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(key)) {
+          if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(normalizeHeader(key))) {
              valueToWrite = "'" + val;
           }
-          sheet.getRange(targetRow, headerMap[key]).setValue(valueToWrite);
+          sheet.getRange(targetRow, targetCol).setValue(valueToWrite);
         }
       }
-      if (headerMap['ID'] && data.ID) {
-         sheet.getRange(targetRow, headerMap['ID']).setValue(data.ID);
-      }
+      if (headerMap['ID'] && data.ID) sheet.getRange(targetRow, headerMap['ID']).setValue(data.ID);
     }
     else if (action === 'delete') {
        if (headerMap['ID'] && data.ID) {
-        const lastRow = sheet.getLastRow();
-        const ids = sheet.getRange(headerRowIdx + 1, headerMap['ID'], Math.max(lastRow - headerRowIdx, 1), 1).getValues().flat();
-        for(let i=0; i<ids.length; i++) {
-          if(String(ids[i]) == String(data.ID)) {
-            sheet.deleteRow(headerRowIdx + 1 + i);
-            break;
-          }
+        const numRows = Math.max(sheet.getLastRow() - headerRowIdx, 0);
+        if (numRows > 0) {
+            const ids = sheet.getRange(headerRowIdx + 1, headerMap['ID'], numRows, 1).getValues().flat();
+            for(let i=0; i<ids.length; i++) {
+              if(String(ids[i]) == String(data.ID)) {
+                sheet.deleteRow(headerRowIdx + 1 + i);
+                break;
+              }
+            }
         }
        }
     }
     else if (action === 'update_catalog') {
         const catSheet = ss.getSheetByName(SHEET_CAT);
         catSheet.clear();
-        
         const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
-        
         catSheet.getRange(1, 1, 1, TARGET_HEADERS.length).setValues([TARGET_HEADERS]);
-        
         const maxLen = Math.max(...TARGET_HEADERS.map(k => (data[k] || []).length));
-        
         if (maxLen > 0) {
            const rows = [];
            for(let i=0; i<maxLen; i++) {
-              const row = TARGET_HEADERS.map(k => (data[k] && data[k][i]) ? data[k][i] : "");
-              rows.push(row);
+              rows.push(TARGET_HEADERS.map(k => (data[k] && data[k][i]) ? data[k][i] : ""));
            }
            catSheet.getRange(2, 1, rows.length, TARGET_HEADERS.length).setValues(rows);
         }
@@ -273,10 +276,10 @@ function doPost(e) {
        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
           <div className="flex items-center gap-4 text-amber-700">
             <AlertCircle size={24} />
-            <h4 className="font-black text-sm uppercase">GAS (Google Apps Script)</h4>
+            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V4)</h4>
           </div>
           <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             Este código contiene la lógica de seguridad para evitar la corrupción de datos. Asegúrate de tener esta versión actualizada en tu editor de Apps Script.
+             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Copia este código para sincronización exacta (PROVEEDOR, IMEI_1).
           </p>
           <div className="relative group">
             <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">

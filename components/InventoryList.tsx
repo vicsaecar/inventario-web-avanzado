@@ -26,7 +26,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
     });
   }, [inventory, searchTerm]);
 
-  // Lista definitiva de las 38 columnas en el orden exacto de la pestaña "inventario"
+  // Lista exacta según la última corrección del usuario
   const MASTER_TABLE_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 

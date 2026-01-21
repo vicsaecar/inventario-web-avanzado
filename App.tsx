@@ -42,6 +42,8 @@ const App: React.FC = () => {
   const pendingEdits = useRef<InventoryItem[]>([]);
   const pendingDeletes = useRef<Set<number>>(new Set());
 
+  // Definición exacta de columnas basada en la hoja, mapeada a tipos internos
+  // NOTA: Se ha actualizado al orden correcto: ID, CODIGO, EQUIPO, EMPRESA...
   const MASTER_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
@@ -246,8 +248,9 @@ const App: React.FC = () => {
         body: JSON.stringify({ action, data: payloadData })
       });
       
-      addLog(`✅ Confirmado: ${itemDesc} guardado en la nube.`);
-      setTimeout(() => syncWithSheets(), 2500); 
+      addLog(`✅ Solicitud enviada: ${itemDesc}`);
+      // Aumentamos el tiempo de espera a 3.5s para asegurar que el Script tenga tiempo de escribir
+      setTimeout(() => syncWithSheets(), 3500); 
     } catch (error: any) {
       addLog(`🚨 Error guardando ${action}: ${error.message}`);
     }
