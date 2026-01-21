@@ -26,7 +26,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
       FECHA: '', UBICACION: '',
       ESTADO: '', MATERIAL: '',
       BEFORE: '', BYOD: '', MODELO: '', SERIAL_NUMBER: '',
-      CARACTERISTICAS: '', TIENDA: '', FECHA_COMPRA: '',
+      CARACTERISTICAS: '', PROVEEDOR: '', FECHA_COMPRA: '',
       FACTURA: '', COSTE: '', CREADO_POR: '',
       RESPONSABLE: '', DISPOSITIVO: '', TARJETA_SIM: '',
       CON_FECHA: '', COMPAÑIA: '', PIN: '',
@@ -223,7 +223,7 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="CIF">
                 <select name="CIF" value={formData.CIF} onChange={handleChange} className="form-input">
                     <option value="">Seleccionar...</option>
-                    {catalog.CIF_EMPRESA.map(c => <option key={c} value={c}>{c}</option>)}
+                    {catalog.CIF.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
             </FormGroup>
             <FormGroup label="ASIGNADO"><input name="ASIGNADO" value={formData.ASIGNADO} onChange={handleChange} className="form-input" /></FormGroup>
@@ -259,8 +259,8 @@ const InventoryForm: React.FC<InventoryFormProps> = ({ onSubmit, initialData, ca
             <FormGroup label="MODELO"><input name="MODELO" value={formData.MODELO} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="SERIAL_NUMBER"><input name="SERIAL_NUMBER" value={formData.SERIAL_NUMBER} onChange={handleChange} className="form-input" /></FormGroup>
             <FormGroup label="CARACTERISTICAS"><textarea name="CARACTERISTICAS" value={formData.CARACTERISTICAS} onChange={handleChange} rows={1} className="form-input h-[46px] pt-2.5" /></FormGroup>
-            <FormGroup label="TIENDA">
-                <select name="TIENDA" value={formData.TIENDA} onChange={handleChange} className="form-input">
+            <FormGroup label="PROVEEDOR">
+                <select name="PROVEEDOR" value={formData.PROVEEDOR} onChange={handleChange} className="form-input">
                     <option value="">Seleccionar...</option>
                     {catalog.PROVEEDOR.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>

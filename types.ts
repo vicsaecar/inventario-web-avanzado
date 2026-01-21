@@ -20,7 +20,7 @@ export interface InventoryItem {
   MODELO: string;
   SERIAL_NUMBER: string;
   CARACTERISTICAS: string;
-  TIENDA: string;
+  PROVEEDOR: string;
   FECHA_COMPRA: string;
   FACTURA: string;
   COSTE: string;
@@ -47,7 +47,7 @@ export interface Catalog {
   DISPOSITIVO: string[];
   UBICACION: string[];
   PROPIEDAD: string[];
-  CIF_EMPRESA: string[];
+  CIF: string[];
   ESTADO: string[];
   MATERIAL: string[];
   COMPAÑIA: string[];
@@ -55,4 +55,4 @@ export interface Catalog {
   BYOD: string[];
 }
 
-export type ViewType = 'dashboard' | 'inventory' | 'reports' | 'settings' | 'add';
+export type ViewType = 'dashboard' | 'inventory' | 'reports' | 'settings' | 'add' | 'catalog';

@@ -10,7 +10,7 @@ import {
   Package,
   Bot,
   RefreshCw,
-  AlertCircle
+  Library
 } from 'lucide-react';
 import { INITIAL_INVENTORY, CATALOG as INITIAL_CATALOG, DEFAULT_SHEET_URL } from './constants';
 import { InventoryItem, ViewType, Catalog } from './types';
@@ -19,6 +19,7 @@ import InventoryList from './components/InventoryList';
 import InventoryForm from './components/InventoryForm';
 import Reports from './components/Reports';
 import SettingsView from './components/SettingsView';
+import CatalogView from './components/CatalogView';
 import AIChat from './components/AIChat';
 
 const App: React.FC = () => {
@@ -28,7 +29,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('zubi_catalog');
     return saved ? JSON.parse(saved) : INITIAL_CATALOG;
   });
-  // Usar DEFAULT_SHEET_URL si no hay nada en localStorage
   const [sheetUrl, setSheetUrl] = useState<string>(() => localStorage.getItem('zubi_sheet_url') || DEFAULT_SHEET_URL);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
@@ -45,7 +45,7 @@ const App: React.FC = () => {
   const MASTER_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
-    'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'TIENDA', 
+    'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'PROVEEDOR', 
     'FECHA_COMPRA', 'FACTURA', 'COSTE', 'CREADO_POR', 'RESPONSABLE', 'DISPOSITIVO', 
     'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
@@ -55,38 +55,22 @@ const App: React.FC = () => {
     setSyncLogs(prev => [ `${new Date().toLocaleTimeString()} - ${msg}`, ...prev].slice(0, 50));
   };
 
-  const normalizeKey = (s: string) => 
-    String(s).toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, "");
-
   const normalizeDate = (val: any): string => {
     if (!val) return "";
     const str = String(val).trim();
-    
-    // Si ya es formato YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
-    
-    // Si es formato ISO (YYYY-MM-DDTHH:mm:ss.sssZ) que suele devolver Google Sheets
     if (str.includes('T')) return str.split('T')[0];
-    
-    // Si es formato local DD/MM/YYYY
     if (str.includes('/') && str.split('/').length === 3) {
         const parts = str.split('/');
         const d = parts[0].padStart(2, '0');
         const m = parts[1].padStart(2, '0');
         const y = parts[2];
-        // Asumimos orden día/mes/año si el año es el último
         if (y.length === 4) return `${y}-${m}-${d}`;
     }
-    
-    // Intento genérico con Date
     const d = new Date(str);
     if (!isNaN(d.getTime())) {
         return d.toISOString().split('T')[0];
     }
-
     return str;
   };
 
@@ -102,7 +86,6 @@ const App: React.FC = () => {
     setIsSyncing(true);
     
     try {
-      // Aañadimos timestamp para evitar caching del navegador
       const cacheBuster = `?t=${new Date().getTime()}`;
       const response = await fetch(`${urlToUse}${cacheBuster}`, { method: 'GET', redirect: 'follow' });
       const data = await response.json();
@@ -117,7 +100,6 @@ const App: React.FC = () => {
             if (row.length < 10) return null; 
             MASTER_COLUMNS.forEach((col, colIdx) => {
               const val = row[colIdx];
-              // Aplicar normalización de fecha para columnas específicas
               if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(col)) {
                 item[col] = normalizeDate(val);
               } else {
@@ -126,11 +108,9 @@ const App: React.FC = () => {
             });
           } else if (typeof row === 'object') {
             if (Object.keys(row).length < 10) return null;
+            // Para inventario mantenemos flexibilidad básica, pero para Catálogo somos estrictos
             MASTER_COLUMNS.forEach(col => {
-              const targetNorm = normalizeKey(col);
-              const foundKey = Object.keys(row).find(k => normalizeKey(k) === targetNorm);
-              const val = row[foundKey || col];
-              
+              const val = row[col];
               if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(col)) {
                 item[col] = normalizeDate(val);
               } else {
@@ -140,17 +120,12 @@ const App: React.FC = () => {
           } else {
             return null;
           }
-          
           item.ID = parseInt(String(item.ID)) || (idx + 1);
           return item as InventoryItem;
         }).filter(item => item !== null && item.CODIGO && item.CODIGO.trim() !== "" && item.CODIGO.toLowerCase() !== "codigo");
 
-        // --- MERGE LOGIC START ---
         let finalInv = [...(processedInv || [])];
-
-        const currentServerIds = new Set(processedInv.map((i: InventoryItem) => i.ID));
         const newDeletes = new Set<number>();
-        
         finalInv = finalInv.filter(item => {
             if (pendingDeletes.current.has(item.ID)) {
                 newDeletes.add(item.ID);
@@ -176,7 +151,6 @@ const App: React.FC = () => {
              if (idx !== -1) {
                  const serverItem = finalInv[idx];
                  const isSynced = JSON.stringify(serverItem) === JSON.stringify(localItem);
-                 
                  if (!isSynced) {
                      finalInv[idx] = localItem;
                      activeEdits.push(localItem);
@@ -187,27 +161,35 @@ const App: React.FC = () => {
              }
         });
         pendingEdits.current = activeEdits;
-        // --- MERGE LOGIC END ---
 
         if (finalInv.length > 0) {
           setInventory(finalInv);
           localStorage.setItem('zubi_inventory', JSON.stringify(finalInv));
         }
-        
         setLastSync(new Date().toLocaleTimeString());
       }
 
+      // Procesar Catálogo STRICT MODE
       const rawCat = data.catalogo || data.catalog;
       if (rawCat) {
-        const newCatalog: Catalog = { ...catalog };
-        Object.keys(newCatalog).forEach(key => {
-          const list = rawCat[key] || rawCat[normalizeKey(key)];
-          if (Array.isArray(list)) {
-            newCatalog[key as keyof Catalog] = list.filter(v => v && String(v).trim() !== "").map(v => String(v).trim());
-          }
+        setCatalog(prevCatalog => {
+            const newCatalog: Catalog = { ...prevCatalog };
+            const rawKeys = Object.keys(rawCat);
+
+            // Iteramos solo sobre las claves oficiales
+            Object.keys(newCatalog).forEach(key => {
+              // Búsqueda exacta (case-insensitive) en los datos recibidos
+              const exactKey = rawKeys.find(k => k.toUpperCase() === key.toUpperCase());
+
+              if (exactKey && Array.isArray(rawCat[exactKey])) {
+                newCatalog[key as keyof Catalog] = rawCat[exactKey]
+                    .filter((v: any) => v && String(v).trim() !== "")
+                    .map((v: any) => String(v).trim());
+              }
+            });
+            localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
+            return newCatalog;
         });
-        setCatalog(newCatalog);
-        localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
       }
 
     } catch (error: any) {
@@ -215,9 +197,8 @@ const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, [sheetUrl, catalog]);
+  }, [sheetUrl]);
 
-  // Polling automático
   useEffect(() => {
     if (!sheetUrl) return;
     const interval = setInterval(() => {
@@ -230,16 +211,11 @@ const App: React.FC = () => {
     if (!sheetUrl) return;
     try {
       addLog(`📤 Enviando '${action}'...`);
-      
-      // Preparar los datos asegurando el formato de fecha correcto antes de enviar
       let payloadData = data;
       if (action === 'upsert' && data) {
           payloadData = { ...data };
-          // Forzar formato YYYY-MM-DD en los campos de fecha
           ['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].forEach(field => {
-             if (payloadData[field]) {
-                 payloadData[field] = normalizeDate(payloadData[field]);
-             }
+             if (payloadData[field]) payloadData[field] = normalizeDate(payloadData[field]);
           });
       }
 
@@ -249,14 +225,13 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data: payloadData })
       });
-      // Esperar un poco más para que GAS termine de procesar antes de releer
       setTimeout(() => syncWithSheets(), 2500); 
     } catch (error: any) {
       addLog(`🚨 Error guardado: ${error.message}`);
     }
   };
 
-  useEffect(() => { syncWithSheets(); }, [sheetUrl]);
+  useEffect(() => { syncWithSheets(); }, [sheetUrl, syncWithSheets]);
 
   const stats = useMemo(() => ({
     total: inventory.length,
@@ -281,7 +256,6 @@ const App: React.FC = () => {
       setInventory(prev => [...prev, updatedItem]);
       pendingAdds.current = [...pendingAdds.current, updatedItem];
     }
-    
     await pushToSheets('upsert', updatedItem);
     setView('inventory');
   };
@@ -306,6 +280,7 @@ const App: React.FC = () => {
           <NavItem icon={<LayoutDashboard size={20} />} label="Dashboard" active={view === 'dashboard'} onClick={() => setView('dashboard')} expanded={isSidebarOpen} />
           <NavItem icon={<Database size={20} />} label="Inventario" active={view === 'inventory'} onClick={() => setView('inventory')} expanded={isSidebarOpen} />
           <NavItem icon={<PlusCircle size={20} />} label="Alta Registro" active={view === 'add'} onClick={() => { setEditingItem(null); setView('add'); }} expanded={isSidebarOpen} />
+          <NavItem icon={<Library size={20} />} label="Catálogo" active={view === 'catalog'} onClick={() => setView('catalog')} expanded={isSidebarOpen} />
           <NavItem icon={<BarChart3 size={20} />} label="Auditoría" active={view === 'reports'} onClick={() => setView('reports')} expanded={isSidebarOpen} />
         </nav>
         <div className="p-6 border-t border-white/10 space-y-2 bg-slate-950/20">
@@ -323,7 +298,8 @@ const App: React.FC = () => {
                 {view === 'inventory' && 'Inventario Maestro'}
                 {view === 'add' && (editingItem ? `Editando #${editingItem.CODIGO}` : 'Nuevo Registro')}
                 {view === 'reports' && 'Auditoría Visual'}
-                {view === 'settings' && 'Gestión Cloud'}
+                {view === 'catalog' && 'Gestión de Catálogos'}
+                {view === 'settings' && 'Conexión Cloud'}
               </h2>
               {lastSync && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Sinc: {lastSync}</span>}
             </div>
@@ -344,7 +320,8 @@ const App: React.FC = () => {
            view === 'inventory' ? <InventoryList inventory={inventory} onEdit={(i) => { setEditingItem(i); setView('add'); }} onDelete={handleDeleteItem} /> :
            view === 'add' ? <InventoryForm onSubmit={handleAddItem} initialData={editingItem} catalog={catalog} onCancel={() => setView('inventory')} inventory={inventory} /> :
            view === 'reports' ? <Reports inventory={inventory} /> :
-           view === 'settings' ? <SettingsView catalog={catalog} setCatalog={setCatalog} sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} logs={syncLogs} /> : null}
+           view === 'catalog' ? <CatalogView catalog={catalog} onCatalogUpdate={(c) => { setCatalog(c); localStorage.setItem('zubi_catalog', JSON.stringify(c)); if (sheetUrl) pushToSheets('update_catalog', c); }} /> :
+           view === 'settings' ? <SettingsView sheetUrl={sheetUrl} setSheetUrl={(u) => { setSheetUrl(u); localStorage.setItem('zubi_sheet_url', u); syncWithSheets(u); }} logs={syncLogs} /> : null}
         </div>
       </main>
       <AIChat isOpen={isAIChatOpen} onClose={() => setIsAIChatOpen(false)} inventory={inventory} />

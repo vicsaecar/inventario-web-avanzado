@@ -1,46 +1,62 @@
 
 import React, { useState } from 'react';
-import { Catalog } from '../types';
 import { 
-  Plus, X, Info, Cloud, Globe, ExternalLink, ShieldCheck, 
-  Building2, Store, Tag, MapPin, Layers, Wifi, UserCog, CreditCard, Search,
-  Activity, Package, Smartphone, Trash2, Terminal, Copy, Check, AlertCircle
+  Cloud, ShieldCheck, Terminal, Copy, Check, AlertCircle, Trash2
 } from 'lucide-react';
 
 interface SettingsViewProps {
-  catalog: Catalog;
-  setCatalog: React.Dispatch<React.SetStateAction<Catalog>>;
   sheetUrl: string;
   setSheetUrl: (url: string) => void;
-  onCatalogUpdate: (newCatalog: Catalog) => void;
   logs?: string[];
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ catalog, setCatalog, sheetUrl, setSheetUrl, onCatalogUpdate, logs = [] }) => {
-  const [activeCategory, setActiveCategory] = useState<keyof Catalog | 'cloud'>('cloud');
-  const [newItem, setNewItem] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs = [] }) => {
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
+  // Script GAS BLINDADO: Umbral mínimo de coincidencias
   const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
 
-// Función para devolver JSON exitoso
 function success(data) {
-  return ContentService.createTextOutput(JSON.stringify(data))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
 }
 
-// Función para devolver JSON de error
 function error(msg) {
-  return ContentService.createTextOutput(JSON.stringify({ error: msg }))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({ error: msg })).setMimeType(ContentService.MimeType.JSON);
 }
 
-// LECTURA DE DATOS (GET)
+// BUSQUEDA INTELIGENTE CON UMBRAL DE SEGURIDAD
+function findHeaderRow(sheet, keywords) {
+  const data = sheet.getDataRange().getValues();
+  let bestRow = { index: -1, values: [], allData: data, matchCount: 0 };
+
+  // Escaneamos las primeras 30 filas
+  for (let i = 0; i < Math.min(data.length, 30); i++) {
+    const rowValues = data[i].map(c => String(c).trim().toUpperCase());
+    // Contamos coincidencias exactas
+    const matchCount = keywords.filter(k => rowValues.includes(k.toUpperCase())).length;
+    
+    // UMBRAL CRÍTICO: Ignoramos filas con menos de 3 coincidencias para evitar
+    // confundir un título (ej: "LISTADO CIF") con la cabecera real.
+    // Si la hoja tiene pocas columnas, ajustamos el umbral dinámicamente.
+    const threshold = Math.min(3, keywords.length); 
+
+    if (matchCount >= threshold && matchCount > bestRow.matchCount) {
+      bestRow = { index: i, values: data[i], allData: data, matchCount: matchCount };
+    }
+  }
+
+  // Si no encontramos nada con el umbral, usamos la primera fila por defecto (fallback)
+  if (bestRow.index === -1) {
+     return { index: 0, values: data[0] || [], allData: data, matchCount: 0 };
+  }
+
+  return bestRow;
+}
+
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const invSheet = ss.getSheetByName(SHEET_INV);
@@ -48,137 +64,168 @@ function doGet(e) {
   
   if (!invSheet || !catSheet) return error("Faltan pestañas 'inventario' o 'catalogo'");
 
-  // Leer Inventario
-  const invData = invSheet.getDataRange().getValues();
-  const headers = invData.length > 0 ? invData[0] : [];
-  
-  // Convertir filas a objetos basados en headers
+  // --- INVENTARIO ---
+  const invInfo = findHeaderRow(invSheet, ["ID", "CODIGO", "EQUIPO", "EMPRESA"]);
+  const invHeaders = invInfo.values;
+  const invData = invInfo.allData;
+  const invStartIndex = invInfo.index + 1;
+
   const inventoryList = [];
-  if (invData.length > 1) {
-    for (let i = 1; i < invData.length; i++) {
+  if (invData.length > invStartIndex) {
+    for (let i = invStartIndex; i < invData.length; i++) {
       let rowObj = {};
-      for (let j = 0; j < headers.length; j++) {
-         rowObj[headers[j]] = invData[i][j];
+      let hasData = false;
+      for (let j = 0; j < invHeaders.length; j++) {
+         const header = String(invHeaders[j]).trim();
+         if (header) {
+           rowObj[header] = invData[i][j];
+           if (rowObj[header]) hasData = true;
+         }
       }
-      inventoryList.push(rowObj);
+      if (hasData) inventoryList.push(rowObj);
     }
   }
 
-  // Leer Catálogo
-  const catData = catSheet.getDataRange().getValues();
+  // --- CATALOGO ---
+  const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
+  
+  const catInfo = findHeaderRow(catSheet, TARGET_HEADERS);
+  const catHeaders = catInfo.values;
+  const catData = catInfo.allData;
+  const catStartIndex = catInfo.index + 1;
+
   const catalogObj = {};
-  if (catData.length > 0) {
-    const catHeaders = catData[0];
-    catHeaders.forEach((h, i) => {
-      catalogObj[h] = catData.slice(1).map(row => row[i]).filter(v => v !== "");
-    });
+  TARGET_HEADERS.forEach(k => catalogObj[k] = []);
+
+  const headerMap = {};
+  const usedColumns = new Set(); // Evitar colisiones de columnas
+  
+  // Mapeo Estricto
+  catHeaders.forEach((h, i) => {
+    const key = String(h).trim().toUpperCase();
+    if (TARGET_HEADERS.includes(key)) {
+       const normalizedKey = TARGET_HEADERS.find(k => k === key);
+       // Si esta clave no está mapeada Y esta columna no ha sido usada
+       if (!headerMap.hasOwnProperty(normalizedKey) && !usedColumns.has(i)) {
+          headerMap[normalizedKey] = i;
+          usedColumns.add(i);
+       }
+    }
+  });
+
+  if (catData.length > catStartIndex) {
+    for (let i = catStartIndex; i < catData.length; i++) {
+       Object.keys(headerMap).forEach(key => {
+         const colIdx = headerMap[key];
+         const val = catData[i][colIdx];
+         if (val && String(val).trim() !== "") {
+           catalogObj[key].push(String(val).trim());
+         }
+       });
+    }
   }
 
-  const payload = {
-    inventario: inventoryList, // Enviamos como objetos para mayor seguridad
+  return success({
+    inventario: inventoryList,
     catalogo: catalogObj
-  };
-  
-  return success(payload);
+  });
 }
 
-// ESCRITURA DE DATOS (POST)
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) return error("Server busy - Lock timeout");
+  if (!lock.tryLock(30000)) return error("Busy");
 
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_INV);
-    if (!sheet) return error("Sheet 'inventario' not found");
-    
+    const sheet = ss.getSheetByName(SHEET_INV);
     const req = JSON.parse(e.postData.contents);
+    
+    // Header dinámico inventario
+    const invInfo = findHeaderRow(sheet, ["ID", "CODIGO"]);
+    const headers = invInfo.values;
+    const headerRowIdx = invInfo.index + 1; 
+    
+    const headerMap = {};
+    headers.forEach((h, i) => { 
+      const key = String(h).trim();
+      if(key) headerMap[key] = i + 1; 
+    });
+
     const action = req.action;
     const data = req.data;
-    
-    // Obtener Headers actuales para mapear columnas dinámicamente
-    const lastCol = sheet.getLastColumn();
-    const headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    const headerMap = {};
-    headerValues.forEach((h, i) => { headerMap[h] = i + 1; });
 
     if (action === 'upsert') {
-      const allIds = sheet.getRange(2, headerMap['ID'] || 1, sheet.getLastRow() - 1 || 1, 1).getValues().flat();
-      let rowIdx = -1;
+      const lastRow = sheet.getLastRow();
+      let targetRow = -1;
       
-      // Buscar ID existente (asumiendo ID es numérico)
-      for (let i = 0; i < allIds.length; i++) {
-        if (String(allIds[i]) == String(data.ID)) {
-          rowIdx = i + 2; // +2 porque i empieza en 0 y hay header
-          break;
-        }
-      }
-
-      // Si no existe, creamos nueva fila
-      if (rowIdx === -1) {
-        rowIdx = sheet.getLastRow() + 1;
-        // Si es nueva fila, copiamos formato de la anterior para mantener estética
-        if (rowIdx > 2) {
-             sheet.getRange(rowIdx - 1, 1, 1, lastCol).copyTo(sheet.getRange(rowIdx, 1, 1, lastCol), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-        }
-      }
-
-      // Actualizar celdas celda a celda basado en el nombre de la columna
-      // Esto es más lento pero 100% seguro si las columnas cambian de orden
-      for (const [key, value] of Object.entries(data)) {
-        const colIdx = headerMap[key];
-        if (colIdx) {
-          // Si es fecha, forzar texto para evitar conversiones raras
-          let finalValue = value;
-          if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(key) && value) {
-             finalValue = "'" + value; // El apóstrofe fuerza texto en Google Sheets
+      if (headerMap['ID'] && data.ID) {
+        const idsRange = sheet.getRange(headerRowIdx + 1, headerMap['ID'], Math.max(lastRow - headerRowIdx, 1), 1);
+        const ids = idsRange.getValues().flat();
+        for(let i=0; i<ids.length; i++) {
+          if(String(ids[i]) == String(data.ID)) {
+            targetRow = headerRowIdx + 1 + i;
+            break;
           }
-          sheet.getRange(rowIdx, colIdx).setValue(finalValue);
         }
       }
-      
-      // Asegurar que el ID se escribe si es nuevo
-      if (headerMap['ID']) {
-         sheet.getRange(rowIdx, headerMap['ID']).setValue(data.ID);
+
+      if (targetRow === -1) {
+        targetRow = lastRow + 1;
+        if (targetRow > headerRowIdx + 1) {
+           try {
+             sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn()).copyTo(sheet.getRange(targetRow, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+           } catch(err) {}
+        }
       }
-    } 
+
+      for (const [key, val] of Object.entries(data)) {
+        if (headerMap[key]) {
+          let valueToWrite = val;
+          if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(key)) {
+             valueToWrite = "'" + val;
+          }
+          sheet.getRange(targetRow, headerMap[key]).setValue(valueToWrite);
+        }
+      }
+      if (headerMap['ID'] && data.ID) {
+         sheet.getRange(targetRow, headerMap['ID']).setValue(data.ID);
+      }
+    }
     else if (action === 'delete') {
-      const allIds = sheet.getRange(2, headerMap['ID'] || 1, sheet.getLastRow() - 1 || 1, 1).getValues().flat();
-      for (let i = 0; i < allIds.length; i++) {
-        if (String(allIds[i]) == String(data.ID)) {
-          sheet.deleteRow(i + 2);
-          break;
+       if (headerMap['ID'] && data.ID) {
+        const lastRow = sheet.getLastRow();
+        const ids = sheet.getRange(headerRowIdx + 1, headerMap['ID'], Math.max(lastRow - headerRowIdx, 1), 1).getValues().flat();
+        for(let i=0; i<ids.length; i++) {
+          if(String(ids[i]) == String(data.ID)) {
+            sheet.deleteRow(headerRowIdx + 1 + i);
+            break;
+          }
         }
-      }
+       }
     }
     else if (action === 'update_catalog') {
         const catSheet = ss.getSheetByName(SHEET_CAT);
-        if(catSheet) {
-             catSheet.clear();
-             const newKeys = Object.keys(data);
-             const maxLength = Math.max(...newKeys.map(k => data[k].length));
-             
-             // Escribir headers
-             catSheet.getRange(1, 1, 1, newKeys.length).setValues([newKeys]);
-             
-             // Escribir columnas
-             if (maxLength > 0) {
-                 const rows = [];
-                 for(let i=0; i<maxLength; i++) {
-                     const row = [];
-                     newKeys.forEach(k => {
-                         row.push(data[k][i] || "");
-                     });
-                     rows.push(row);
-                 }
-                 catSheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
-             }
+        catSheet.clear();
+        
+        const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
+        
+        catSheet.getRange(1, 1, 1, TARGET_HEADERS.length).setValues([TARGET_HEADERS]);
+        
+        const maxLen = Math.max(...TARGET_HEADERS.map(k => (data[k] || []).length));
+        
+        if (maxLen > 0) {
+           const rows = [];
+           for(let i=0; i<maxLen; i++) {
+              const row = TARGET_HEADERS.map(k => (data[k] && data[k][i]) ? data[k][i] : "");
+              rows.push(row);
+           }
+           catSheet.getRange(2, 1, rows.length, TARGET_HEADERS.length).setValues(rows);
         }
     }
 
     return success({ result: "ok" });
-  } catch (err) {
-    return error(err.toString());
+  } catch (e) {
+    return error(e.toString());
   } finally {
     lock.releaseLock();
   }
@@ -192,152 +239,68 @@ function doPost(e) {
 
   const handleSafeReset = () => {
     if (window.confirm("¿Estás seguro? Esto borrará la URL de conexión y los datos locales de la caché, pero no afectará a tu Google Sheet.")) {
-      // Borrado Quirúrgico: Solo eliminamos lo nuestro
       localStorage.removeItem('zubi_catalog');
       localStorage.removeItem('zubi_inventory');
       localStorage.removeItem('zubi_sheet_url');
-      // Recarga forzada limpia
       window.location.reload();
     }
   };
 
-  const categories: { key: keyof Catalog | 'cloud'; label: string; icon: React.ReactNode }[] = [
-    { key: 'cloud', label: 'Sincronización Cloud', icon: <Cloud size={16}/> },
-    { key: 'PROVEEDOR', label: 'Proveedores', icon: <Store size={16}/> },
-    { key: 'EMPRESA', label: 'Empresas', icon: <Building2 size={16}/> },
-    { key: 'TIPO', label: 'Tipos de Activo', icon: <Tag size={16}/> },
-    { key: 'DISPOSITIVO', label: 'Gamas Dispositivo', icon: <Layers size={16}/> },
-    { key: 'UBICACION', label: 'Ubicaciones', icon: <MapPin size={16}/> },
-    { key: 'PROPIEDAD', label: 'Propiedad Legal', icon: <CreditCard size={16}/> },
-    { key: 'CIF_EMPRESA', label: 'CIF Empresa', icon: <ShieldCheck size={16}/> },
-    { key: 'ESTADO', label: 'Estados Operativos', icon: <Activity size={16}/> },
-    { key: 'MATERIAL', label: 'Materiales', icon: <Package size={16}/> },
-    { key: 'COMPAÑIA', label: 'Compañías Tel.', icon: <Wifi size={16}/> },
-    { key: 'CREADO_POR', label: 'Responsables', icon: <UserCog size={16}/> },
-    { key: 'BYOD', label: 'Política BYOD', icon: <Smartphone size={16}/> }
-  ];
-
-  const handleAddItem = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (activeCategory === 'cloud' || !newItem.trim()) return;
-    if (catalog[activeCategory].includes(newItem.trim())) return;
-    const updated = { ...catalog, [activeCategory]: [...catalog[activeCategory], newItem.trim()] };
-    onCatalogUpdate(updated);
-    setNewItem('');
-  };
-
-  const handleRemoveItem = (itemToRemove: string) => {
-    if (activeCategory === 'cloud') return;
-    if (window.confirm(`¿Eliminar "${itemToRemove}"?`)) {
-      const updated = { ...catalog, [activeCategory]: catalog[activeCategory].filter(item => item !== itemToRemove) };
-      onCatalogUpdate(updated);
-    }
-  };
-
-  const filteredItems = activeCategory === 'cloud' ? [] : (catalog[activeCategory as keyof Catalog] || []).filter(item => 
-    item.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
-    <div className="max-w-6xl mx-auto animate-in fade-in duration-500 pb-10">
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden flex flex-col md:flex-row min-h-[750px] max-h-[85vh]">
-        {/* Sidebar */}
-        <div className="w-full md:w-80 bg-slate-50 border-r border-slate-200 flex flex-col overflow-hidden">
-          <div className="p-8"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Configuración</h3></div>
-          <nav className="flex-1 overflow-y-auto px-4 space-y-1 custom-scrollbar">
-            {categories.map((cat) => (
-              <button key={cat.key} onClick={() => { setActiveCategory(cat.key); setSearchTerm(''); }} className={`w-full text-left px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-4 ${activeCategory === cat.key ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-500 hover:bg-white hover:text-slate-900'}`}>{cat.icon} {cat.label}</button>
-            ))}
-          </nav>
-          <div className="p-6 bg-slate-100 border-t border-slate-200 mt-auto">
-             <button onClick={handleSafeReset} className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95"><Trash2 size={16} /> Resetear Cache</button>
+    <div className="max-w-4xl mx-auto animate-in fade-in duration-500 pb-10 space-y-8">
+       <div className="flex items-center gap-6">
+          <div className="bg-blue-600 p-4 rounded-3xl shadow-xl text-white"><Cloud size={32}/></div>
+          <div>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Conexión Cloud</h2>
+            <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Configuración del enlace Google Sheets</p>
           </div>
-        </div>
+       </div>
 
-        {/* Contenido */}
-        <div className="flex-1 overflow-y-auto p-10 bg-white custom-scrollbar">
-          {activeCategory === 'cloud' ? (
-            <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-               <div className="flex items-center gap-6">
-                  <div className="bg-blue-600 p-4 rounded-3xl shadow-xl text-white"><Cloud size={32}/></div>
-                  <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Diagnóstico Cloud</h2>
-                    <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Solución de errores de sincronización</p>
-                  </div>
-               </div>
+       {/* AVISO CRITICO */}
+       <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
+          <div className="flex items-center gap-4 text-amber-700">
+            <AlertCircle size={24} />
+            <h4 className="font-black text-sm uppercase">¡PROTECCIÓN CONTRA CORRUPCIÓN ACTIVADA!</h4>
+          </div>
+          <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
+             Hemos detectado que el script estaba confundiendo filas de título (ej: "Listado CIF") con la cabecera real.
+          </p>
+          <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
+             <strong>Solución aplicada:</strong> El nuevo script exige encontrar AL MENOS 3 encabezados válidos en una fila para considerarla válida. Además, impide que una misma columna se asigne a dos categorías a la vez.
+          </p>
+          <div className="relative group">
+            <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
+              {gasCode}
+            </pre>
+            <button 
+              onClick={handleCopyCode}
+              className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl transition-all"
+            >
+              {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+            </button>
+          </div>
+       </div>
 
-               {/* AVISO CRITICO */}
-               <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
-                  <div className="flex items-center gap-4 text-amber-700">
-                    <AlertCircle size={24} />
-                    <h4 className="font-black text-sm uppercase">¡ACTUALIZACIÓN REQUERIDA EN GOOGLE SCRIPT!</h4>
-                  </div>
-                  <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    Para asegurar la sincronización bidireccional, hemos actualizado el código del conector.
-                  </p>
-                  <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-                    1. Copia el nuevo código de abajo.<br/>
-                    2. Pégalo en tu editor de Google Apps Script.<br/>
-                    3. Pulsa "Implementar" -> "Nueva implementación" (IMPORTANTE: Crea una NUEVA versión).
-                  </p>
-                  <div className="relative group">
-                    <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
-                      {gasCode}
-                    </pre>
-                    <button 
-                      onClick={handleCopyCode}
-                      className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white p-2 rounded-xl transition-all"
-                    >
-                      {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                    </button>
-                  </div>
-               </div>
+       <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white space-y-4 shadow-2xl relative overflow-hidden">
+          <h4 className="font-black text-xs uppercase tracking-[0.2em] text-blue-400 mb-2 font-mono">URL del Google Apps Script</h4>
+          <input type="text" value={tempUrl} onChange={(e) => setTempUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-6 py-5 text-sm font-bold text-blue-400 focus:border-blue-500 focus:bg-white/10 outline-none transition-all font-mono" />
+          <button onClick={() => setSheetUrl(tempUrl)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"><ShieldCheck size={20}/> Guardar Conexión</button>
+       </div>
 
-               <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white space-y-4 shadow-2xl relative overflow-hidden">
-                  <h4 className="font-black text-xs uppercase tracking-[0.2em] text-blue-400 mb-2 font-mono">URL del Google Apps Script</h4>
-                  <input type="text" value={tempUrl} onChange={(e) => setTempUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-6 py-5 text-sm font-bold text-blue-400 focus:border-blue-500 focus:bg-white/10 outline-none transition-all font-mono" />
-                  <button onClick={() => setSheetUrl(tempUrl)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"><ShieldCheck size={20}/> Guardar Conexión</button>
-               </div>
+       <div className="p-8 bg-slate-950 border-2 border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+             <div className="flex items-center gap-3"><Terminal className="text-emerald-400" size={20}/><h5 className="font-black text-xs text-emerald-400 uppercase tracking-widest">Logs del Servidor</h5></div>
+          </div>
+          <div className="h-48 overflow-y-auto bg-black/30 rounded-2xl p-6 font-mono text-[10px] space-y-2 custom-scrollbar border border-white/5">
+             {logs.map((log, i) => (
+                <div key={i} className={`pb-1 border-b border-white/5 ${log.includes('❌') || log.includes('🚨') ? 'text-rose-400' : log.includes('✅') ? 'text-emerald-400' : 'text-slate-400'}`}>{log}</div>
+             ))}
+          </div>
+       </div>
 
-               <div className="p-8 bg-slate-950 border-2 border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
-                  <div className="flex items-center justify-between mb-4">
-                     <div className="flex items-center gap-3"><Terminal className="text-emerald-400" size={20}/><h5 className="font-black text-xs text-emerald-400 uppercase tracking-widest">Logs del Servidor</h5></div>
-                  </div>
-                  <div className="h-48 overflow-y-auto bg-black/30 rounded-2xl p-6 font-mono text-[10px] space-y-2 custom-scrollbar border border-white/5">
-                     {logs.map((log, i) => (
-                        <div key={i} className={`pb-1 border-b border-white/5 ${log.includes('❌') || log.includes('🚨') ? 'text-rose-400' : log.includes('✅') ? 'text-emerald-400' : 'text-slate-400'}`}>{log}</div>
-                     ))}
-                  </div>
-               </div>
-            </div>
-          ) : (
-            <div className="animate-in slide-in-from-right-4 duration-500 flex flex-col h-full">
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-4">
-                  <div className="bg-slate-900 p-3 rounded-2xl text-white shadow-lg">{categories.find(c => c.key === activeCategory)?.icon}</div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase leading-none">{categories.find(c => c.key === activeCategory)?.label}</h2>
-                </div>
-                <div className="relative">
-                   <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                   <input type="text" placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 pr-6 py-2.5 bg-slate-100 border-none rounded-full text-[10px] font-black uppercase focus:bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none" />
-                </div>
-              </div>
-              <form onSubmit={handleAddItem} className="mb-8 flex gap-4">
-                <input type="text" value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder={`Añadir a ${activeCategory}...`} className="flex-1 bg-white border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-bold text-slate-900 focus:border-blue-500 outline-none transition-all shadow-sm" />
-                <button type="submit" className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs hover:bg-blue-600 transition-all shadow-xl flex items-center gap-3 active:scale-95"><Plus size={18} /> Añadir</button>
-              </form>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-20">
-                {filteredItems.map((item) => (
-                  <div key={item} className="group bg-slate-50 border border-slate-100 p-5 rounded-2xl flex items-center justify-between hover:bg-white hover:border-blue-200 hover:shadow-lg transition-all">
-                    <span className="text-[11px] font-black text-slate-700 truncate uppercase tracking-tight">{item}</span>
-                    <button onClick={() => handleRemoveItem(item)} className="p-2 text-slate-300 hover:text-rose-600 transition-all opacity-0 group-hover:opacity-100 bg-white rounded-xl shadow-sm border border-slate-100"><X size={16} /></button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+       <div className="flex justify-end pt-6">
+          <button onClick={handleSafeReset} className="px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95 flex items-center gap-2"><Trash2 size={16} /> Resetear Cache y Reiniciar</button>
+       </div>
     </div>
   );
 };

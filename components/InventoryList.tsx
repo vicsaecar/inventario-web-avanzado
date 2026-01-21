@@ -28,7 +28,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
   const MASTER_TABLE_COLUMNS = [
     'ID', 'CODIGO', 'EQUIPO', 'EMPRESA', 'DESCRIPCION', 'TIPO', 'PROPIEDAD', 'CIF', 
     'ASIGNADO', 'CORREO', 'ADM', 'FECHA', 'UBICACION', 'ESTADO', 'MATERIAL', 
-    'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'TIENDA', 
+    'BEFORE', 'BYOD', 'MODELO', 'SERIAL_NUMBER', 'CARACTERISTICAS', 'PROVEEDOR', 
     'FECHA_COMPRA', 'FACTURA', 'COSTE', 'CREADO_POR', 'RESPONSABLE', 'DISPOSITIVO', 
     'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
@@ -196,7 +196,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
 
                 <SectionDetail title="Historial Financiero" icon={<Banknote size={18}/>}>
                   <div className="grid grid-cols-2 gap-y-6 gap-x-10">
-                    <Field label="TIENDA" value={selectedItem.TIENDA} />
+                    <Field label="PROVEEDOR" value={selectedItem.PROVEEDOR} />
                     <Field label="FECHA_COMPRA" value={selectedItem.FECHA_COMPRA} />
                     <Field label="FACTURA" value={selectedItem.FACTURA} />
                     <Field label="COSTE" value={selectedItem.COSTE} isHighlight />
