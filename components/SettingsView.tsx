@@ -14,7 +14,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  // Script GAS BLINDADO: Umbral mínimo de coincidencias
+  // Script GAS BLINDADO: Umbral mínimo de coincidencias (Mantenemos la versión segura)
   const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM
 
 const SHEET_INV = "inventario";
@@ -248,25 +248,35 @@ function doPost(e) {
 
   return (
     <div className="max-w-4xl mx-auto animate-in fade-in duration-500 pb-10 space-y-8">
-       <div className="flex items-center gap-6">
-          <div className="bg-blue-600 p-4 rounded-3xl shadow-xl text-white"><Cloud size={32}/></div>
-          <div>
-            <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Conexión Cloud</h2>
-            <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Configuración del enlace Google Sheets</p>
+       {/* 0. Cabecera y Botón de Reset Arriba a la Derecha */}
+       <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+              <div className="bg-blue-600 p-4 rounded-3xl shadow-xl text-white"><Cloud size={32}/></div>
+              <div>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tighter uppercase leading-none">Conexión Cloud</h2>
+                <p className="text-slate-500 text-xs font-bold mt-2 uppercase tracking-widest">Configuración del enlace Google Sheets</p>
+              </div>
           </div>
+          <button onClick={handleSafeReset} className="px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95 flex items-center gap-2">
+             <Trash2 size={16} /> Resetear Cache y Reiniciar
+          </button>
        </div>
 
-       {/* AVISO CRITICO */}
+       {/* 1. URL del Google Apps Script */}
+       <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white space-y-4 shadow-2xl relative overflow-hidden">
+          <h4 className="font-black text-xs uppercase tracking-[0.2em] text-blue-400 mb-2 font-mono">URL del Google Apps Script</h4>
+          <input type="text" value={tempUrl} onChange={(e) => setTempUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-6 py-5 text-sm font-bold text-blue-400 focus:border-blue-500 focus:bg-white/10 outline-none transition-all font-mono" />
+          <button onClick={() => setSheetUrl(tempUrl)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"><ShieldCheck size={20}/> Guardar Conexión</button>
+       </div>
+
+       {/* 2. GAS (Código) */}
        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
           <div className="flex items-center gap-4 text-amber-700">
             <AlertCircle size={24} />
-            <h4 className="font-black text-sm uppercase">¡PROTECCIÓN CONTRA CORRUPCIÓN ACTIVADA!</h4>
+            <h4 className="font-black text-sm uppercase">GAS (Google Apps Script)</h4>
           </div>
           <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             Hemos detectado que el script estaba confundiendo filas de título (ej: "Listado CIF") con la cabecera real.
-          </p>
-          <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             <strong>Solución aplicada:</strong> El nuevo script exige encontrar AL MENOS 3 encabezados válidos en una fila para considerarla válida. Además, impide que una misma columna se asigne a dos categorías a la vez.
+             Este código contiene la lógica de seguridad para evitar la corrupción de datos. Asegúrate de tener esta versión actualizada en tu editor de Apps Script.
           </p>
           <div className="relative group">
             <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
@@ -281,12 +291,7 @@ function doPost(e) {
           </div>
        </div>
 
-       <div className="bg-slate-900 p-10 rounded-[2.5rem] text-white space-y-4 shadow-2xl relative overflow-hidden">
-          <h4 className="font-black text-xs uppercase tracking-[0.2em] text-blue-400 mb-2 font-mono">URL del Google Apps Script</h4>
-          <input type="text" value={tempUrl} onChange={(e) => setTempUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" className="w-full bg-white/5 border-2 border-white/10 rounded-2xl px-6 py-5 text-sm font-bold text-blue-400 focus:border-blue-500 focus:bg-white/10 outline-none transition-all font-mono" />
-          <button onClick={() => setSheetUrl(tempUrl)} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-xl active:scale-95"><ShieldCheck size={20}/> Guardar Conexión</button>
-       </div>
-
+       {/* 3. LOGS DEL SERVIDOR */}
        <div className="p-8 bg-slate-950 border-2 border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden">
           <div className="flex items-center justify-between mb-4">
              <div className="flex items-center gap-3"><Terminal className="text-emerald-400" size={20}/><h5 className="font-black text-xs text-emerald-400 uppercase tracking-widest">Logs del Servidor</h5></div>
@@ -296,10 +301,6 @@ function doPost(e) {
                 <div key={i} className={`pb-1 border-b border-white/5 ${log.includes('❌') || log.includes('🚨') ? 'text-rose-400' : log.includes('✅') ? 'text-emerald-400' : 'text-slate-400'}`}>{log}</div>
              ))}
           </div>
-       </div>
-
-       <div className="flex justify-end pt-6">
-          <button onClick={handleSafeReset} className="px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all active:scale-95 flex items-center gap-2"><Trash2 size={16} /> Resetear Cache y Reiniciar</button>
        </div>
     </div>
   );
