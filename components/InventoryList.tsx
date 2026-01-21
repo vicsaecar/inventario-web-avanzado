@@ -1,10 +1,9 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { 
   Edit3, Trash2, Monitor, Cpu, Search, X, MapPin, Tag, Hash, 
   Smartphone, User, Building2, Calendar, CreditCard, Info, ShieldCheck, Wifi,
   ArrowUpDown, Database, ClipboardList, HardDrive, PhoneCall, Banknote,
-  ArrowUp, ArrowDown, Filter
+  ArrowUp, ArrowDown, Filter, ListFilter
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 
@@ -16,7 +15,8 @@ interface InventoryListProps {
 
 const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDelete }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterColumn, setFilterColumn] = useState(''); // Estado para la columna seleccionada
+  const [showFilters, setShowFilters] = useState(false); // Toggle para mostrar la fila de filtros
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({}); // Estado para filtros individuales
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
 
@@ -30,21 +30,33 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
 
+  const handleColumnFilterChange = (column: string, value: string) => {
+    setColumnFilters(prev => ({
+      ...prev,
+      [column]: value
+    }));
+  };
+
   const filteredData = useMemo(() => {
     return inventory.filter(item => {
+      // 1. Filtrado Global (Buscador General)
       const term = searchTerm.toLowerCase();
+      const globalMatch = Object.values(item as any).join(' ').toLowerCase().includes(term);
       
-      // Si hay una columna seleccionada, buscamos solo en esa propiedad
-      if (filterColumn) {
-        const value = String((item as any)[filterColumn] || '').toLowerCase();
-        return value.includes(term);
-      }
-      
-      // Búsqueda Global (Comportamiento original)
-      const searchStr = Object.values(item).join(' ').toLowerCase();
-      return searchStr.includes(term);
+      if (!globalMatch) return false;
+
+      // 2. Filtrado por Columnas (Simulación Google Sheets)
+      // Debe cumplir TODOS los filtros de columna activos
+      const columnMatch = Object.entries(columnFilters).every(([key, filterVal]) => {
+        if (!filterVal) return true; // Si no hay filtro en esta columna, pasa
+        const fVal = String(filterVal);
+        const itemVal = String((item as any)[key] || '').toLowerCase();
+        return itemVal.includes(fVal.toLowerCase());
+      });
+
+      return columnMatch;
     });
-  }, [inventory, searchTerm, filterColumn]);
+  }, [inventory, searchTerm, columnFilters]);
 
   const handleScrollToTop = () => {
     if (tableContainerRef.current) {
@@ -60,35 +72,26 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
 
   return (
     <div className="flex flex-col h-full space-y-4">
-      {/* Buscador de Alto Impacto con Filtro de Columna */}
+      {/* Buscador de Alto Impacto y Toggle de Filtros */}
       <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row gap-6 items-center">
         
-        <div className="relative flex-1 w-full group flex flex-col sm:flex-row gap-4">
-          {/* Desplegable de Filtro */}
-          <div className="relative shrink-0 min-w-[180px]">
-            <Filter className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
-            <select 
-              value={filterColumn}
-              onChange={(e) => setFilterColumn(e.target.value)}
-              className="w-full pl-10 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-[10px] uppercase font-black tracking-widest outline-none cursor-pointer hover:bg-slate-100 transition-all appearance-none text-slate-600 shadow-sm"
-            >
-              <option value="">Global (Todo)</option>
-              {MASTER_TABLE_COLUMNS.filter(col => col !== 'ID').map(col => (
-                <option key={col} value={col}>{col}</option>
-              ))}
-            </select>
-            {/* Flecha personalizada para el select */}
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">
-              <ArrowUpDown size={12} />
-            </div>
-          </div>
+        <div className="relative flex-1 w-full group flex items-center gap-4">
+          
+          {/* Botón Toggle Filtros (Estilo Google Sheets) */}
+          <button 
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-[1.25rem] border-2 transition-all font-black text-[10px] uppercase tracking-widest shrink-0 ${showFilters ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-slate-50 border-transparent text-slate-500 hover:bg-slate-100'}`}
+          >
+             <ListFilter size={16} />
+             {showFilters ? 'Ocultar Filtros' : 'Filtros Columna'}
+          </button>
 
-          {/* Input de Búsqueda */}
+          {/* Input de Búsqueda Global */}
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-all" size={20} />
             <input 
               type="text" 
-              placeholder={filterColumn ? `Buscando en columna: ${filterColumn}...` : "Buscador Maestro de Celdas (Sincronizado 1:1)..."}
+              placeholder="Buscador Global (Busca en todo el registro)..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-8 py-2.5 bg-slate-50 border-transparent border-2 focus:border-blue-500 focus:bg-white rounded-[1.25rem] text-sm outline-none font-bold transition-all shadow-inner placeholder:text-slate-400 placeholder:font-medium"
@@ -103,7 +106,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
               <div className="flex flex-col">
                 <span className="text-[11px] font-black uppercase tracking-[0.2em] leading-none">{filteredData.length} Activos</span>
                 <span className="text-[8px] font-bold text-slate-400 uppercase mt-1">
-                  {filterColumn ? `Filtrado por ${filterColumn}` : 'Vista Global'}
+                  {Object.values(columnFilters).some(v => v) ? 'Filtros Activos' : 'Vista General'}
                 </span>
               </div>
            </div>
@@ -114,13 +117,37 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
       <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm flex-1 overflow-hidden flex flex-col relative">
         <div ref={tableContainerRef} className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar scroll-smooth">
           <table className="w-full text-left border-collapse min-w-[3800px]">
-            <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-md z-10 border-b border-slate-200">
-              <tr>
+            <thead className="sticky top-0 z-20">
+              {/* Fila de Encabezados Principal */}
+              <tr className="bg-slate-50/95 backdrop-blur-md border-b border-slate-200">
                 {MASTER_TABLE_COLUMNS.map(col => (
                   <HeaderCell key={col} label={col} />
                 ))}
                 <th className="px-6 py-6 text-[10px] font-black uppercase tracking-widest text-slate-500 text-right sticky right-0 bg-slate-50/95 border-l border-slate-200">ACCIONES</th>
               </tr>
+              
+              {/* Fila de Filtros por Columna (Aparece si showFilters es true) */}
+              {showFilters && (
+                <tr className="bg-blue-50/50 border-b border-blue-100 animate-in slide-in-from-top-2 duration-300">
+                  {MASTER_TABLE_COLUMNS.map(col => (
+                    <th key={`filter-${col}`} className="px-2 py-2 align-top">
+                      <div className="relative">
+                        <input 
+                          type="text"
+                          value={columnFilters[col] || ''}
+                          onChange={(e) => handleColumnFilterChange(col, e.target.value)}
+                          placeholder={`Filtrar...`}
+                          className="w-full bg-white border border-blue-200 rounded-lg px-3 py-1.5 text-[10px] font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent placeholder:text-slate-300 uppercase"
+                        />
+                        {columnFilters[col] && (
+                           <button onClick={() => handleColumnFilterChange(col, '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"><X size={10}/></button>
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                  <th className="sticky right-0 bg-blue-50/50 border-l border-blue-100"></th>
+                </tr>
+              )}
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredData.map((item) => (
@@ -157,7 +184,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
                     return <td key={col} className="px-6 py-4 text-xs font-bold text-slate-500 truncate max-w-[180px]">{value}</td>;
                   })}
                   
-                  <td className="px-6 py-4 text-right sticky right-0 bg-white/95 backdrop-blur-sm border-l border-slate-100 group-hover:bg-blue-100/50 transition-colors z-20">
+                  <td className="px-6 py-4 text-right sticky right-0 bg-white/95 backdrop-blur-sm border-l border-slate-100 group-hover:bg-blue-100/50 transition-colors z-10">
                     <div className="flex items-center justify-end gap-2">
                       <button onClick={(e) => { e.stopPropagation(); onEdit(item); }} className="p-2.5 hover:bg-white text-blue-600 rounded-xl transition-all shadow-sm border border-transparent hover:border-blue-100"><Edit3 size={18}/></button>
                       <button onClick={(e) => { e.stopPropagation(); onDelete(item.ID); }} className="p-2.5 hover:bg-white text-rose-600 rounded-xl transition-all shadow-sm border border-transparent hover:border-rose-100"><Trash2 size={18}/></button>
