@@ -52,7 +52,9 @@ const App: React.FC = () => {
   ];
 
   const addLog = (msg: string) => {
-    setSyncLogs(prev => [ `${new Date().toLocaleTimeString()} - ${msg}`, ...prev].slice(0, 50));
+    // Añadimos timestamp y mantenemos un historial de 50 logs
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setSyncLogs(prev => [`[${time}] ${msg}`, ...prev].slice(0, 50));
   };
 
   const normalizeDate = (val: any): string => {
@@ -77,19 +79,25 @@ const App: React.FC = () => {
   const syncWithSheets = useCallback(async (forcedUrl?: string) => {
     const urlToUse = forcedUrl || sheetUrl;
     if (!urlToUse) {
-      addLog("⚠️ Sin URL. Cargando datos locales...");
+      addLog("⚠️ Sin URL configurada. Usando datos locales.");
       const savedInv = localStorage.getItem('zubi_inventory');
       if (savedInv) setInventory(JSON.parse(savedInv));
       return;
     }
     
     setIsSyncing(true);
+    // Log de inicio de sincronización
+    addLog("🔄 Conectando con Google Sheets...");
     
     try {
       const cacheBuster = `?t=${new Date().getTime()}`;
       const response = await fetch(`${urlToUse}${cacheBuster}`, { method: 'GET', redirect: 'follow' });
+      if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+      
       const data = await response.json();
       
+      if (data.error) throw new Error(data.error);
+
       let rawInvData = data.inventario || (Array.isArray(data) ? data : null);
       
       if (rawInvData && Array.isArray(rawInvData)) {
@@ -108,7 +116,6 @@ const App: React.FC = () => {
             });
           } else if (typeof row === 'object') {
             if (Object.keys(row).length < 10) return null;
-            // Para inventario mantenemos flexibilidad básica, pero para Catálogo somos estrictos
             MASTER_COLUMNS.forEach(col => {
               const val = row[col];
               if (['FECHA', 'FECHA_COMPRA', 'CON_FECHA'].includes(col)) {
@@ -165,6 +172,10 @@ const App: React.FC = () => {
         if (finalInv.length > 0) {
           setInventory(finalInv);
           localStorage.setItem('zubi_inventory', JSON.stringify(finalInv));
+          // Log detallado de éxito en inventario
+          addLog(`✅ Inventario sincronizado: ${finalInv.length} activos cargados.`);
+        } else {
+          addLog("⚠️ Inventario vacío o formato incorrecto.");
         }
         setLastSync(new Date().toLocaleTimeString());
       }
@@ -175,25 +186,27 @@ const App: React.FC = () => {
         setCatalog(prevCatalog => {
             const newCatalog: Catalog = { ...prevCatalog };
             const rawKeys = Object.keys(rawCat);
+            let countUpdates = 0;
 
-            // Iteramos solo sobre las claves oficiales
             Object.keys(newCatalog).forEach(key => {
-              // Búsqueda exacta (case-insensitive) en los datos recibidos
               const exactKey = rawKeys.find(k => k.toUpperCase() === key.toUpperCase());
 
               if (exactKey && Array.isArray(rawCat[exactKey])) {
                 newCatalog[key as keyof Catalog] = rawCat[exactKey]
                     .filter((v: any) => v && String(v).trim() !== "")
                     .map((v: any) => String(v).trim());
+                countUpdates++;
               }
             });
             localStorage.setItem('zubi_catalog', JSON.stringify(newCatalog));
+            // Log detallado de éxito en catálogo
+            addLog(`✅ Catálogo actualizado: ${countUpdates} categorías procesadas.`);
             return newCatalog;
         });
       }
 
     } catch (error: any) {
-      addLog(`🚨 Error: ${error.message}`);
+      addLog(`🚨 Error crítico de sincronización: ${error.message}`);
     } finally {
       setIsSyncing(false);
     }
@@ -210,7 +223,14 @@ const App: React.FC = () => {
   const pushToSheets = async (action: 'upsert' | 'delete' | 'update_catalog', data: any) => {
     if (!sheetUrl) return;
     try {
-      addLog(`📤 Enviando '${action}'...`);
+      // Identificación del item para el log
+      let itemDesc = "Datos";
+      if (action === 'update_catalog') itemDesc = "Catálogo Global";
+      else if (data && data.CODIGO) itemDesc = `[${data.CODIGO}] ${data.EQUIPO || ''}`;
+      else if (data && data.ID) itemDesc = `ID:${data.ID}`;
+
+      addLog(`📤 Enviando: ${action.toUpperCase()} > ${itemDesc}...`);
+      
       let payloadData = data;
       if (action === 'upsert' && data) {
           payloadData = { ...data };
@@ -225,9 +245,11 @@ const App: React.FC = () => {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ action, data: payloadData })
       });
+      
+      addLog(`✅ Confirmado: ${itemDesc} guardado en la nube.`);
       setTimeout(() => syncWithSheets(), 2500); 
     } catch (error: any) {
-      addLog(`🚨 Error guardado: ${error.message}`);
+      addLog(`🚨 Error guardando ${action}: ${error.message}`);
     }
   };
 
