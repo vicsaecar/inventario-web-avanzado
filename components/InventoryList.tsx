@@ -1,9 +1,10 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Edit3, Trash2, Monitor, Cpu, Search, X, MapPin, Tag, Hash, 
   Smartphone, User, Building2, Calendar, CreditCard, Info, ShieldCheck, Wifi,
-  ArrowUpDown, Database, ClipboardList, HardDrive, PhoneCall, Banknote
+  ArrowUpDown, Database, ClipboardList, HardDrive, PhoneCall, Banknote,
+  ArrowUp, ArrowDown
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 
@@ -16,6 +17,7 @@ interface InventoryListProps {
 const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDelete }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   const filteredData = useMemo(() => {
     return inventory.filter(item => {
@@ -33,6 +35,18 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
     'TARJETA_SIM', 'CON_FECHA', 'COMPAÑIA', 'PIN', 'Nº_TELEFONO', 'PUK', 'TARIFA', 
     'IMEI_1', 'IMEI_2', 'CORREO_SSO', 'ETIQ'
   ];
+
+  const handleScrollToTop = () => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleScrollToBottom = () => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTo({ top: tableContainerRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="flex flex-col h-full space-y-4">
@@ -58,8 +72,8 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
       </div>
 
       {/* Súper-Tabla Clon del Libro Google Sheets */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm flex-1 overflow-hidden flex flex-col">
-        <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
+      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm flex-1 overflow-hidden flex flex-col relative">
+        <div ref={tableContainerRef} className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar scroll-smooth">
           <table className="w-full text-left border-collapse min-w-[3800px]">
             <thead className="sticky top-0 bg-slate-50/95 backdrop-blur-md z-10 border-b border-slate-200">
               <tr>
@@ -114,6 +128,24 @@ const InventoryList: React.FC<InventoryListProps> = ({ inventory, onEdit, onDele
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Floating Navigation Arrows */}
+        <div className="absolute bottom-8 right-8 flex flex-col gap-3 z-30">
+          <button 
+            onClick={handleScrollToTop}
+            className="p-3 bg-white text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 shadow-xl rounded-full transition-all active:scale-95 group"
+            title="Ir al inicio"
+          >
+            <ArrowUp size={20} className="group-hover:-translate-y-0.5 transition-transform" />
+          </button>
+          <button 
+            onClick={handleScrollToBottom}
+            className="p-3 bg-slate-900 text-white hover:bg-blue-600 shadow-xl rounded-full transition-all active:scale-95 group"
+            title="Ir al final"
+          >
+            <ArrowDown size={20} className="group-hover:translate-y-0.5 transition-transform" />
+          </button>
         </div>
       </div>
 
