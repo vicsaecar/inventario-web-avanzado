@@ -14,8 +14,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ sheetUrl, setSheetUrl, logs
   const [tempUrl, setTempUrl] = useState(sheetUrl);
   const [copied, setCopied] = useState(false);
 
-  // Script GAS V5: Corrección crítica para la letra Ñ (COMPAÑIA)
-  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V5 - Fix Ñ Support)
+  // Script GAS V6: Clonado de Formatos y Validaciones (Desplegables)
+  const gasCode = `// ⚠️ COPIA Y PEGA ESTE CÓDIGO COMPLETO EN SCRIPT.GOOGLE.COM (Versión V6 - Full Clone)
 
 const SHEET_INV = "inventario";
 const SHEET_CAT = "catalogo";
@@ -31,18 +31,9 @@ function error(msg) {
 // NORMALIZADOR V5: Protección robusta de la Ñ
 function normalizeHeader(header) {
   var key = String(header).trim().toUpperCase();
-  
-  // 1. Protegemos la Ñ reemplazándola por un token temporal único
-  // Esto evita que el normalize("NFD") la separe en N + ~ y luego el regex la elimine
   key = key.replace(/Ñ/g, "###NY###");
-  
-  // 2. Eliminamos tildes de vocales (Á -> A)
   key = key.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
-  
-  // 3. Restauramos la Ñ
   key = key.replace(/###NY###/g, "Ñ");
-  
-  // 4. Limpieza final: espacios a guiones bajos, y solo permitimos A-Z, 0-9, _, Ñ, º
   return key.replace(/\\s+/g, '_').replace(/[^A-Z0-9_Ñº]/g, "");
 }
 
@@ -103,8 +94,6 @@ function doGet(e) {
   }
 
   // --- CATALOGO ---
-  // IMPORTANTE: Aquí se busca "COMPAÑIA" explícitamente. 
-  // Gracias al fix en normalizeHeader, ahora coincidirá con la hoja.
   const TARGET_HEADERS = ["PROVEEDOR", "EMPRESA", "TIPO", "DISPOSITIVO", "UBICACION", "PROPIEDAD", "CIF", "ESTADO", "MATERIAL", "COMPAÑIA", "CREADO_POR", "BYOD"];
   const catInfo = findHeaderRow(catSheet, TARGET_HEADERS);
   const catData = catInfo.allData;
@@ -158,6 +147,7 @@ function doPost(e) {
       const lastRow = sheet.getLastRow();
       let targetRow = -1;
       
+      // Buscar si es actualización (ID existente)
       if (headerMap['ID'] && data.ID) {
         const numRows = Math.max(lastRow - headerRowIdx, 0);
         if (numRows > 0) {
@@ -171,13 +161,30 @@ function doPost(e) {
         }
       }
 
+      // Si es NUEVA FILA
       if (targetRow === -1) {
         targetRow = lastRow + 1;
+        
+        // --- LÓGICA DE CLONADO (V6) ---
+        // Copiamos formato y validación de la fila inmediatamente superior
+        // para mantener desplegables y estilos visuales.
         if (targetRow > headerRowIdx + 1) {
-           try { sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn()).copyTo(sheet.getRange(targetRow, 1), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch(err) {}
+           try { 
+             var sourceRange = sheet.getRange(targetRow - 1, 1, 1, sheet.getLastColumn());
+             var targetRange = sheet.getRange(targetRow, 1); // Solo necesitamos celda inicio
+             
+             // 1. Copiar Aspecto Visual (Bordes, Colores, Fuentes)
+             sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+             
+             // 2. Copiar Reglas de Datos (Desplegables, Checkboxes)
+             sourceRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+           } catch(err) {
+             // Ignoramos errores si la hoja está vacía
+           }
         }
       }
 
+      // Escribir datos
       for (const [key, val] of Object.entries(data)) {
         const targetCol = headerMap[normalizeHeader(key)];
         if (targetCol) {
@@ -269,10 +276,10 @@ function doPost(e) {
        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[2rem] space-y-4">
           <div className="flex items-center gap-4 text-amber-700">
             <AlertCircle size={24} />
-            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V5)</h4>
+            <h4 className="font-black text-sm uppercase">CÓDIGO DE SERVIDOR (ACTUALIZAR - V6)</h4>
           </div>
           <p className="text-xs font-bold text-amber-800/70 leading-relaxed">
-             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Este código incluye la corrección para leer correctamente la columna "COMPAÑIA" (respetando la Ñ).
+             <span className="bg-amber-200 px-1 rounded">IMPORTANTE:</span> Este código incluye <b>PASTE_DATA_VALIDATION</b> para clonar los desplegables de la hoja.
           </p>
           <div className="relative group">
             <pre className="bg-slate-900 text-blue-400 p-6 rounded-2xl text-[10px] font-mono overflow-x-auto border-b-4 border-blue-600 max-h-60 custom-scrollbar">
